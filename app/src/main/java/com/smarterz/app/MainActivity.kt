@@ -1274,19 +1274,19 @@ class MainActivity : AppCompatActivity() {
         homePrimeList.adapter = homePrimeAdapter
 
         // Movies section
-        moviesAdapter = DiscoverAdapter(emptyList(), "movie") { loadDetail(it.id, "movie") }
+        moviesAdapter = DiscoverAdapter(emptyList(), "movie", onClick = { loadDetail(it.id, "movie") })
         moviesRecycler.layoutManager = GridLayoutManager(this, 3)
         moviesRecycler.adapter = moviesAdapter
 
         // Series section
-        seriesAdapter = DiscoverAdapter(emptyList(), "tv") { loadDetail(it.id, "tv") }
+        seriesAdapter = DiscoverAdapter(emptyList(), "tv", onClick = { loadDetail(it.id, "tv") })
         seriesRecycler.layoutManager = GridLayoutManager(this, 3)
         seriesRecycler.adapter = seriesAdapter
 
         // Discover section
-        discoverAdapter = DiscoverAdapter(emptyList(), "movie") { item ->
+        discoverAdapter = DiscoverAdapter(emptyList(), "movie", onClick = { item ->
             loadDetail(item.id, item.mediaType ?: "movie")
-        }
+        })
         discoverRecycler.layoutManager = GridLayoutManager(this, 3)
         discoverRecycler.adapter = discoverAdapter
 
