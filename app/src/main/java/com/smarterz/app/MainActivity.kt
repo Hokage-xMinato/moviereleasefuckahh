@@ -7,8 +7,6 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -364,32 +362,17 @@ class SmartWebViewClient(
             } catch(e) {}
 
             // ── A4. Block exitFullscreen calls from ads ─────────────────────────
-            // Intercept on document AND every element prototype so no ad or iframe
-            // can trigger a fullscreen exit — user never sees the screen go black.
+            // KEY FIX: Prevent black screen during ads in fullscreen
             try {
-                var noop = function() { return Promise.resolve(); };
-                try { document.exitFullscreen = noop; } catch(e) {}
-                try { document.webkitExitFullscreen = noop; } catch(e) {}
-                try { document.mozCancelFullScreen = noop; } catch(e) {}
-                try { document.msExitFullscreen = noop; } catch(e) {}
-                try {
-                    Object.defineProperty(Element.prototype, 'exitFullscreen', { get: function() { return noop; }, configurable: true });
-                    Object.defineProperty(Element.prototype, 'webkitExitFullscreen', { get: function() { return noop; }, configurable: true });
-                } catch(e) {}
-                try {
-                    Object.defineProperty(HTMLVideoElement.prototype, 'exitFullscreen', { get: function() { return noop; }, configurable: true });
-                    Object.defineProperty(HTMLVideoElement.prototype, 'webkitExitFullscreen', { get: function() { return noop; }, configurable: true });
-                } catch(e) {}
-                // Spoof fullscreenElement as non-null so page thinks it's still fullscreen
-                try {
-                    Object.defineProperty(document, 'fullscreenElement', { get: function() { return document.documentElement; }, configurable: true });
-                    Object.defineProperty(document, 'webkitFullscreenElement', { get: function() { return document.documentElement; }, configurable: true });
-                } catch(e) {}
-                // Block fullscreenchange events from propagating out of ad iframes
-                try {
-                    document.addEventListener('fullscreenchange', function(e) { e.stopImmediatePropagation(); }, true);
-                    document.addEventListener('webkitfullscreenchange', function(e) { e.stopImmediatePropagation(); }, true);
-                } catch(e) {}
+                var _exit = document.exitFullscreen || document.webkitExitFullscreen;
+                if (_exit) {
+                    document.exitFullscreen = function() { return Promise.resolve(); };
+                    document.webkitExitFullscreen = function() {};
+                }
+                // Also intercept on the video element to prevent ads killing fullscreen
+                Object.defineProperty(HTMLVideoElement.prototype, 'exitFullscreen', {
+                    get: function() { return function() { return Promise.resolve(); }; }
+                });
             } catch(e) {}
 
             // ── A5. Prevent ad iframes from going fullscreen and then exiting ──
@@ -598,20 +581,24 @@ class SmartWebViewClient(
 // ─── SmartChromeClient ────────────────────────────────────────────────────────
 
 class SmartChromeClient(
-    private val fullscreenContainer: FrameLayout,
+    private val fullscreenContainer: FrameLayout,   // kept for API compat, not used for rendering
     private val onFullscreenEnter: () -> Unit,
     private val onFullscreenExit: () -> Unit
 ) : WebChromeClient() {
 
-    private var customView: View? = null
-    private var customViewCallback: CustomViewCallback? = null
+    // ── No custom-view system ─────────────────────────────────────────────────
+    // The custom-view path (onShowCustomView / onHideCustomView) moves video
+    // rendering to a brand-new Android Surface.  Every time that surface is
+    // touched — by an ad, by a focus change, by anything — it redraws black.
+    // There is no reliable way to prevent that flash from inside the app.
+    //
+    // Instead we track fullscreen state ourselves and let the Activity expand
+    // playerWebView to fill the screen.  The WebView keeps rendering on its
+    // own surface the whole time, exactly like normal (non-fullscreen) mode,
+    // so ads cannot cause a black screen any more than they can in normal mode.
 
-    // Fullscreen re-entry guard — prevents ad-driven black screen
-    // When an ad fires exitFullscreen(), we detect it's not user-intentional
-    // and immediately re-show the fullscreen view so screen never goes black.
-    private var intentionalExit = false
-    private val reEntryHandler = Handler(Looper.getMainLooper())
-    private var pendingReEntry: Runnable? = null
+    private var _isFullscreen = false
+    private var pendingCallback: CustomViewCallback? = null
 
     private val POPUP_ALLOWED_HOSTS = setOf(
         "vidsrc.me", "vidsrc.to", "vidsrc.xyz",
@@ -619,63 +606,38 @@ class SmartChromeClient(
         "cloudnestra.com"
     )
 
-    fun markIntentionalExit() {
-        intentionalExit = true
-        reEntryHandler.postDelayed({ intentionalExit = false }, 1000)
-    }
-
     override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
-        pendingReEntry?.let { reEntryHandler.removeCallbacks(it) }
-        pendingReEntry = null
-
-        if (customView != null) {
-            onHideCustomView()
-            return
+        // Immediately acknowledge the callback so the WebView isn't blocked,
+        // but do NOT add the view anywhere — we use playerWebView directly.
+        pendingCallback = callback
+        if (!_isFullscreen) {
+            _isFullscreen = true
+            onFullscreenEnter()
         }
-        customView = view ?: return
-        customViewCallback = callback
-        intentionalExit = false
-
-        fullscreenContainer.addView(
-            customView,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
-        fullscreenContainer.visibility = View.VISIBLE
-        onFullscreenEnter()
     }
 
     override fun onHideCustomView() {
-        val view = customView ?: return
-
-        if (!intentionalExit) {
-            // ── Spurious exit (ad-driven) ──────────────────────────────────────
-            // Touch NOTHING. The view and container stay exactly as they are.
-            // The user sees zero change — no black flash, no fullscreen exit.
-            pendingReEntry?.let { reEntryHandler.removeCallbacks(it) }
-            pendingReEntry = null
-            return
+        // Called by ads, by the page, by anything — we only act on it if the
+        // Activity has explicitly told us this is an intentional user exit.
+        // Otherwise silently ignore it; playerWebView keeps rendering normally.
+        if (_isFullscreen && intentionalExit) {
+            _isFullscreen = false
+            intentionalExit = false
+            pendingCallback?.onCustomViewHidden()
+            pendingCallback = null
+            onFullscreenExit()
         }
-
-        // ── Intentional exit (back button / close) ────────────────────────────
-        pendingReEntry?.let { reEntryHandler.removeCallbacks(it) }
-        pendingReEntry = null
-        intentionalExit = false
-
-        fullscreenContainer.removeView(view)
-        fullscreenContainer.visibility = View.GONE
-        customViewCallback?.onCustomViewHidden()
-        customView = null
-        customViewCallback = null
-        onFullscreenExit()
+        // Spurious (ad-driven) call → do nothing at all.
     }
 
-    fun isFullscreen() = customView != null
+    private var intentionalExit = false
+
+    fun markIntentionalExit() { intentionalExit = true }
+
+    fun isFullscreen() = _isFullscreen
 
     fun exitFullscreenIfNeeded(): Boolean {
-        return if (customView != null) {
+        return if (_isFullscreen) {
             markIntentionalExit()
             onHideCustomView()
             true
@@ -1173,8 +1135,7 @@ class MainActivity : AppCompatActivity() {
             fullscreenContainer,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         )
-        fullscreenContainer.visibility = View.GONE
-        fullscreenContainer.setBackgroundColor(Color.TRANSPARENT)
+        fullscreenContainer.visibility = View.GONE   // never used for rendering
 
         playerWebView.webViewClient = SmartWebViewClient(
             onPageReady = { playerLoadingOverlay.visibility = View.GONE },
@@ -1192,6 +1153,9 @@ class MainActivity : AppCompatActivity() {
         playerWebView.webChromeClient = SmartChromeClient(
             fullscreenContainer = fullscreenContainer,
             onFullscreenEnter = {
+                // ── Expand playerWebView itself to fill the whole window ──────
+                // This is exactly how normal mode works — same surface, same
+                // renderer — so ads cannot cause a black screen.
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                 window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -1199,13 +1163,34 @@ class MainActivity : AppCompatActivity() {
                     ctrl.hide(WindowInsetsCompat.Type.systemBars())
                     ctrl.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 }
-                playerModal.visibility = View.VISIBLE   // keep rendered as background layer
+                // Detach playerWebView from videoContainer and re-attach it
+                // directly to the decor view so it fills the whole screen.
+                (playerWebView.parent as? ViewGroup)?.removeView(playerWebView)
+                val decor = window.decorView as FrameLayout
+                decor.addView(
+                    playerWebView,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
+                playerWebView.translationZ = 100f   // sit above everything
             },
             onFullscreenExit = {
+                // ── Shrink playerWebView back into videoContainer ─────────────
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 WindowCompat.setDecorFitsSystemWindows(window, true)
                 WindowInsetsControllerCompat(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
+                (playerWebView.parent as? ViewGroup)?.removeView(playerWebView)
+                playerWebView.translationZ = 0f
+                videoContainer.addView(
+                    playerWebView,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
                 playerModal.visibility = View.VISIBLE
             }
         ).also { chromeClient = it }
