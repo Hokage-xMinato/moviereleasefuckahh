@@ -1160,17 +1160,17 @@ class MainActivity : AppCompatActivity() {
                     ctrl.hide(WindowInsetsCompat.Type.systemBars())
                     ctrl.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 }
-                // Expand videoContainer (and the WebView inside it) to fill the
-                // whole screen by making it MATCH_PARENT in all directions and
-                // hiding every sibling inside playerModal that would show above it.
-                videoContainer.layoutParams = videoContainer.layoutParams.apply {
-                    width = ViewGroup.LayoutParams.MATCH_PARENT
-                    height = ViewGroup.LayoutParams.MATCH_PARENT
+                // Hide every child of playerModal except videoContainer
+                // so only the WebView is visible, then resize videoContainer
+                // to fill the whole playerModal which itself is MATCH_PARENT.
+                val parent = videoContainer.parent as? ViewGroup ?: return@SmartChromeClient
+                for (i in 0 until parent.childCount) {
+                    val child = parent.getChildAt(i)
+                    if (child !== videoContainer) child.visibility = View.INVISIBLE
                 }
-                // Hide the title bar, controls etc. so only the video is visible.
-                for (i in 0 until (videoContainer.parent as? ViewGroup)?.childCount!!) {
-                    val child = (videoContainer.parent as ViewGroup).getChildAt(i)
-                    if (child != videoContainer) child.visibility = View.GONE
+                videoContainer.layoutParams = videoContainer.layoutParams.apply {
+                    width  = ViewGroup.LayoutParams.MATCH_PARENT
+                    height = ViewGroup.LayoutParams.MATCH_PARENT
                 }
             },
             onFullscreenExit = {
@@ -1178,18 +1178,18 @@ class MainActivity : AppCompatActivity() {
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 WindowCompat.setDecorFitsSystemWindows(window, true)
                 WindowInsetsControllerCompat(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
-                // Restore videoContainer to its original 16:9 height.
+                // Restore videoContainer to its original 16:9 height, then
+                // make all siblings visible again.
                 val screenWidth = resources.displayMetrics.widthPixels
                 val videoHeight = screenWidth * 9 / 16
                 videoContainer.layoutParams = videoContainer.layoutParams.apply {
-                    width = ViewGroup.LayoutParams.MATCH_PARENT
+                    width  = ViewGroup.LayoutParams.MATCH_PARENT
                     height = videoHeight
                 }
-                // Restore all sibling views that were hidden during fullscreen.
-                for (i in 0 until (videoContainer.parent as? ViewGroup)?.childCount!!) {
-                    (videoContainer.parent as ViewGroup).getChildAt(i).visibility = View.VISIBLE
+                val parent = videoContainer.parent as? ViewGroup ?: return@SmartChromeClient
+                for (i in 0 until parent.childCount) {
+                    parent.getChildAt(i).visibility = View.VISIBLE
                 }
-                playerModal.visibility = View.VISIBLE
             }
         ).also { chromeClient = it }
 
