@@ -364,30 +364,31 @@ class SmartWebViewClient(
             } catch(e) {}
 
             // ── A4. Block exitFullscreen calls from ads ─────────────────────────
-            // Intercept on document AND every element prototype so no ad iframe
+            // Intercept on document AND every element prototype so no ad or iframe
             // can trigger a fullscreen exit — user never sees the screen go black.
             try {
                 var noop = function() { return Promise.resolve(); };
-                // document-level (standard + webkit)
                 try { document.exitFullscreen = noop; } catch(e) {}
                 try { document.webkitExitFullscreen = noop; } catch(e) {}
                 try { document.mozCancelFullScreen = noop; } catch(e) {}
                 try { document.msExitFullscreen = noop; } catch(e) {}
-                // Element.prototype — covers every element incl. iframes & video
                 try {
                     Object.defineProperty(Element.prototype, 'exitFullscreen', { get: function() { return noop; }, configurable: true });
                     Object.defineProperty(Element.prototype, 'webkitExitFullscreen', { get: function() { return noop; }, configurable: true });
                 } catch(e) {}
-                // HTMLVideoElement direct properties
                 try {
                     Object.defineProperty(HTMLVideoElement.prototype, 'exitFullscreen', { get: function() { return noop; }, configurable: true });
                     Object.defineProperty(HTMLVideoElement.prototype, 'webkitExitFullscreen', { get: function() { return noop; }, configurable: true });
                 } catch(e) {}
-                // document.fullscreenElement spoof — keep it non-null so the page
-                // thinks it's still fullscreen and won't re-request it unnecessarily
+                // Spoof fullscreenElement as non-null so page thinks it's still fullscreen
                 try {
                     Object.defineProperty(document, 'fullscreenElement', { get: function() { return document.documentElement; }, configurable: true });
                     Object.defineProperty(document, 'webkitFullscreenElement', { get: function() { return document.documentElement; }, configurable: true });
+                } catch(e) {}
+                // Block fullscreenchange events from propagating out of ad iframes
+                try {
+                    document.addEventListener('fullscreenchange', function(e) { e.stopImmediatePropagation(); }, true);
+                    document.addEventListener('webkitfullscreenchange', function(e) { e.stopImmediatePropagation(); }, true);
                 } catch(e) {}
             } catch(e) {}
 
@@ -651,15 +652,14 @@ class SmartChromeClient(
 
         if (!intentionalExit) {
             // ── Spurious exit (ad-driven) ──────────────────────────────────────
-            // Do NOT touch the view or container at all. The view stays in the
-            // container, the container stays visible — the user sees nothing.
-            // We cancel any pending re-entry work since there's nothing to do.
+            // Touch NOTHING. The view and container stay exactly as they are.
+            // The user sees zero change — no black flash, no fullscreen exit.
             pendingReEntry?.let { reEntryHandler.removeCallbacks(it) }
             pendingReEntry = null
             return
         }
 
-        // ── Intentional exit ──────────────────────────────────────────────────
+        // ── Intentional exit (back button / close) ────────────────────────────
         pendingReEntry?.let { reEntryHandler.removeCallbacks(it) }
         pendingReEntry = null
         intentionalExit = false
@@ -1174,7 +1174,7 @@ class MainActivity : AppCompatActivity() {
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         )
         fullscreenContainer.visibility = View.GONE
-        fullscreenContainer.setBackgroundColor(Color.BLACK)
+        fullscreenContainer.setBackgroundColor(Color.TRANSPARENT)
 
         playerWebView.webViewClient = SmartWebViewClient(
             onPageReady = { playerLoadingOverlay.visibility = View.GONE },
@@ -1199,7 +1199,7 @@ class MainActivity : AppCompatActivity() {
                     ctrl.hide(WindowInsetsCompat.Type.systemBars())
                     ctrl.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 }
-                playerModal.visibility = View.INVISIBLE
+                playerModal.visibility = View.VISIBLE   // keep rendered as background layer
             },
             onFullscreenExit = {
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
