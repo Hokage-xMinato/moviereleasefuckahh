@@ -612,25 +612,30 @@ class SmartChromeClient(
         pendingCallback = callback
         if (!_isFullscreen) {
             _isFullscreen = true
+            fullscreenEnteredAt = System.currentTimeMillis()
             onFullscreenEnter()
         }
     }
 
     override fun onHideCustomView() {
-        // Called by ads, by the page, by anything — we only act on it if the
-        // Activity has explicitly told us this is an intentional user exit.
-        // Otherwise silently ignore it; playerWebView keeps rendering normally.
-        if (_isFullscreen && intentionalExit) {
+        if (!_isFullscreen) return
+        val elapsed = System.currentTimeMillis() - fullscreenEnteredAt
+        // Accept the exit if:
+        //  (a) the Activity explicitly requested it (back key, our exit button), OR
+        //  (b) it has been at least 800 ms since fullscreen started — meaning this
+        //      is a real user action from the embed player controls, not an ad bounce.
+        if (intentionalExit || elapsed > 800L) {
             _isFullscreen = false
             intentionalExit = false
             pendingCallback?.onCustomViewHidden()
             pendingCallback = null
             onFullscreenExit()
         }
-        // Spurious (ad-driven) call → do nothing at all.
+        // Spurious (ad-driven immediate) call → do nothing at all.
     }
 
     private var intentionalExit = false
+    private var fullscreenEnteredAt = 0L
 
     fun markIntentionalExit() { intentionalExit = true }
 
@@ -924,6 +929,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var prevEpBtn: ImageButton
     private lateinit var nextEpBtn: ImageButton
     private lateinit var chromeClient: SmartChromeClient
+    private lateinit var fullscreenBtn: ImageButton
+    private lateinit var fullscreenExitBtn: ImageButton   // floating exit button shown over decor
 
     // ── State ─────────────────────────────────────────────────────────────────
     private val api = TmdbApi()
@@ -1123,6 +1130,34 @@ class MainActivity : AppCompatActivity() {
         val screenWidth = resources.displayMetrics.widthPixels
         val videoHeight = screenWidth * 9 / 16
         videoContainer.layoutParams = videoContainer.layoutParams.apply { height = videoHeight }
+
+        // ── Fullscreen toggle button (bottom-right corner of videoContainer) ──
+        val density = resources.displayMetrics.density
+        val btnSize = (40 * density).toInt()
+        val margin = (8 * density).toInt()
+
+        fullscreenBtn = ImageButton(this).apply {
+            setImageResource(android.R.drawable.ic_menu_crop)
+            setBackgroundColor(Color.parseColor("#99000000"))
+            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+            setPadding(6, 6, 6, 6)
+            contentDescription = "Enter fullscreen"
+        }
+        val fsParams = FrameLayout.LayoutParams(btnSize, btnSize).apply {
+            gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+            setMargins(0, 0, margin, margin)
+        }
+        videoContainer.addView(fullscreenBtn, fsParams)
+
+        // ── Floating exit-fullscreen button added to the decor when in fullscreen ──
+        fullscreenExitBtn = ImageButton(this).apply {
+            setImageResource(android.R.drawable.ic_menu_revert)
+            setBackgroundColor(Color.parseColor("#99000000"))
+            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+            setPadding(6, 6, 6, 6)
+            contentDescription = "Exit fullscreen"
+            visibility = View.GONE
+        }
     }
 
     // ─── WebView Setup ────────────────────────────────────────────────────────
@@ -1153,6 +1188,10 @@ class MainActivity : AppCompatActivity() {
         playerWebView.webChromeClient = SmartChromeClient(
             fullscreenContainer = fullscreenContainer,
             onFullscreenEnter = {
+                // Hide the player shell (title bar, controls, close button) so the
+                // WebView can fill the entire screen without any UI on top of it.
+                playerModal.visibility = View.INVISIBLE
+
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                 window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -1160,36 +1199,63 @@ class MainActivity : AppCompatActivity() {
                     ctrl.hide(WindowInsetsCompat.Type.systemBars())
                     ctrl.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 }
-                // Hide every child of playerModal except videoContainer
-                // so only the WebView is visible, then resize videoContainer
-                // to fill the whole playerModal which itself is MATCH_PARENT.
-                val parent = videoContainer.parent as? ViewGroup ?: return@SmartChromeClient
-                for (i in 0 until parent.childCount) {
-                    val child = parent.getChildAt(i)
-                    if (child !== videoContainer) child.visibility = View.INVISIBLE
+
+                // Detach playerWebView from videoContainer and attach it directly
+                // to the decor so it fills the whole screen on the same surface.
+                (playerWebView.parent as? ViewGroup)?.removeView(playerWebView)
+                val decor = window.decorView as FrameLayout
+                decor.addView(
+                    playerWebView,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
+                playerWebView.translationZ = 100f
+
+                // Add a small exit-fullscreen button in the top-right corner of the decor.
+                val density = resources.displayMetrics.density
+                val btnSize = (40 * density).toInt()
+                val margin = (8 * density).toInt()
+                if (fullscreenExitBtn.parent == null) {
+                    decor.addView(
+                        fullscreenExitBtn,
+                        FrameLayout.LayoutParams(btnSize, btnSize).apply {
+                            gravity = android.view.Gravity.TOP or android.view.Gravity.END
+                            setMargins(0, margin, margin, 0)
+                        }
+                    )
                 }
-                videoContainer.layoutParams = videoContainer.layoutParams.apply {
-                    width  = ViewGroup.LayoutParams.MATCH_PARENT
-                    height = ViewGroup.LayoutParams.MATCH_PARENT
+                fullscreenExitBtn.translationZ = 200f
+                fullscreenExitBtn.visibility = View.VISIBLE
+                fullscreenExitBtn.setOnClickListener {
+                    if (::chromeClient.isInitialized) {
+                        chromeClient.markIntentionalExit()
+                        chromeClient.exitFullscreenIfNeeded()
+                    }
                 }
             },
             onFullscreenExit = {
+                // Hide the exit button and restore the player shell.
+                fullscreenExitBtn.visibility = View.GONE
+
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 WindowCompat.setDecorFitsSystemWindows(window, true)
                 WindowInsetsControllerCompat(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
-                // Restore videoContainer to its original 16:9 height, then
-                // make all siblings visible again.
-                val screenWidth = resources.displayMetrics.widthPixels
-                val videoHeight = screenWidth * 9 / 16
-                videoContainer.layoutParams = videoContainer.layoutParams.apply {
-                    width  = ViewGroup.LayoutParams.MATCH_PARENT
-                    height = videoHeight
-                }
-                val parent = videoContainer.parent as? ViewGroup ?: return@SmartChromeClient
-                for (i in 0 until parent.childCount) {
-                    parent.getChildAt(i).visibility = View.VISIBLE
-                }
+
+                // Move playerWebView back into videoContainer.
+                (playerWebView.parent as? ViewGroup)?.removeView(playerWebView)
+                playerWebView.translationZ = 0f
+                videoContainer.addView(
+                    playerWebView,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
+
+                playerModal.visibility = View.VISIBLE
             }
         ).also { chromeClient = it }
 
@@ -1309,6 +1375,24 @@ class MainActivity : AppCompatActivity() {
 
         // Player
         closePlayer.setOnClickListener { closePlayer() }
+
+        // Fullscreen toggle button on the video container
+        fullscreenBtn.setOnClickListener {
+            if (::chromeClient.isInitialized && chromeClient.isFullscreen()) {
+                chromeClient.markIntentionalExit()
+                chromeClient.exitFullscreenIfNeeded()
+            } else {
+                // Ask the WebView's page to enter fullscreen via JS
+                playerWebView.evaluateJavascript(
+                    "(function(){ var v = document.querySelector('video'); if(v) { " +
+                    "if(v.requestFullscreen) v.requestFullscreen(); " +
+                    "else if(v.webkitRequestFullscreen) v.webkitRequestFullscreen(); } " +
+                    "else { var p = document.querySelector('[class*=\"player\"], [id*=\"player\"], .jw-video, .plyr'); " +
+                    "if(p && p.requestFullscreen) p.requestFullscreen(); } })()",
+                    null
+                )
+            }
+        }
         prevEpBtn.setOnClickListener {
             if (currentEpisode > 1) { currentEpisode-- }
             else {
