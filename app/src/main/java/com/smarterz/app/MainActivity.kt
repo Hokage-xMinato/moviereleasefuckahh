@@ -364,17 +364,31 @@ class SmartWebViewClient(
             } catch(e) {}
 
             // ── A4. Block exitFullscreen calls from ads ─────────────────────────
-            // KEY FIX: Prevent black screen during ads in fullscreen
+            // Intercept on document AND every element prototype so no ad iframe
+            // can trigger a fullscreen exit — user never sees the screen go black.
             try {
-                var _exit = document.exitFullscreen || document.webkitExitFullscreen;
-                if (_exit) {
-                    document.exitFullscreen = function() { return Promise.resolve(); };
-                    document.webkitExitFullscreen = function() {};
-                }
-                // Also intercept on the video element to prevent ads killing fullscreen
-                Object.defineProperty(HTMLVideoElement.prototype, 'exitFullscreen', {
-                    get: function() { return function() { return Promise.resolve(); }; }
-                });
+                var noop = function() { return Promise.resolve(); };
+                // document-level (standard + webkit)
+                try { document.exitFullscreen = noop; } catch(e) {}
+                try { document.webkitExitFullscreen = noop; } catch(e) {}
+                try { document.mozCancelFullScreen = noop; } catch(e) {}
+                try { document.msExitFullscreen = noop; } catch(e) {}
+                // Element.prototype — covers every element incl. iframes & video
+                try {
+                    Object.defineProperty(Element.prototype, 'exitFullscreen', { get: function() { return noop; }, configurable: true });
+                    Object.defineProperty(Element.prototype, 'webkitExitFullscreen', { get: function() { return noop; }, configurable: true });
+                } catch(e) {}
+                // HTMLVideoElement direct properties
+                try {
+                    Object.defineProperty(HTMLVideoElement.prototype, 'exitFullscreen', { get: function() { return noop; }, configurable: true });
+                    Object.defineProperty(HTMLVideoElement.prototype, 'webkitExitFullscreen', { get: function() { return noop; }, configurable: true });
+                } catch(e) {}
+                // document.fullscreenElement spoof — keep it non-null so the page
+                // thinks it's still fullscreen and won't re-request it unnecessarily
+                try {
+                    Object.defineProperty(document, 'fullscreenElement', { get: function() { return document.documentElement; }, configurable: true });
+                    Object.defineProperty(document, 'webkitFullscreenElement', { get: function() { return document.documentElement; }, configurable: true });
+                } catch(e) {}
             } catch(e) {}
 
             // ── A5. Prevent ad iframes from going fullscreen and then exiting ──
@@ -636,32 +650,12 @@ class SmartChromeClient(
         val view = customView ?: return
 
         if (!intentionalExit) {
-            // ── Spurious exit (ad-driven) — FIX for black screen ──────────────
-            // Immediately re-attach the custom view so fullscreen is never lost.
-            fullscreenContainer.removeView(view)
-            customViewCallback?.onCustomViewHidden()
-            customViewCallback = null
-
-            val savedView = view
-            val reEntry = Runnable {
-                if (customView == savedView) {
-                    try {
-                        fullscreenContainer.addView(
-                            savedView,
-                            FrameLayout.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT
-                            )
-                        )
-                        fullscreenContainer.visibility = View.VISIBLE
-                    } catch (e: Exception) {
-                        customView = null
-                        onFullscreenExit()
-                    }
-                }
-            }
-            pendingReEntry = reEntry
-            reEntryHandler.post(reEntry)
+            // ── Spurious exit (ad-driven) ──────────────────────────────────────
+            // Do NOT touch the view or container at all. The view stays in the
+            // container, the container stays visible — the user sees nothing.
+            // We cancel any pending re-entry work since there's nothing to do.
+            pendingReEntry?.let { reEntryHandler.removeCallbacks(it) }
+            pendingReEntry = null
             return
         }
 
