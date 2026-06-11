@@ -1153,9 +1153,6 @@ class MainActivity : AppCompatActivity() {
         playerWebView.webChromeClient = SmartChromeClient(
             fullscreenContainer = fullscreenContainer,
             onFullscreenEnter = {
-                // ── Expand playerWebView itself to fill the whole window ──────
-                // This is exactly how normal mode works — same surface, same
-                // renderer — so ads cannot cause a black screen.
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                 window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -1163,34 +1160,35 @@ class MainActivity : AppCompatActivity() {
                     ctrl.hide(WindowInsetsCompat.Type.systemBars())
                     ctrl.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 }
-                // Detach playerWebView from videoContainer and re-attach it
-                // directly to the decor view so it fills the whole screen.
-                (playerWebView.parent as? ViewGroup)?.removeView(playerWebView)
-                val decor = window.decorView as FrameLayout
-                decor.addView(
-                    playerWebView,
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                )
-                playerWebView.translationZ = 100f   // sit above everything
+                // Expand videoContainer (and the WebView inside it) to fill the
+                // whole screen by making it MATCH_PARENT in all directions and
+                // hiding every sibling inside playerModal that would show above it.
+                videoContainer.layoutParams = videoContainer.layoutParams.apply {
+                    width = ViewGroup.LayoutParams.MATCH_PARENT
+                    height = ViewGroup.LayoutParams.MATCH_PARENT
+                }
+                // Hide the title bar, controls etc. so only the video is visible.
+                for (i in 0 until (videoContainer.parent as? ViewGroup)?.childCount!!) {
+                    val child = (videoContainer.parent as ViewGroup).getChildAt(i)
+                    if (child != videoContainer) child.visibility = View.GONE
+                }
             },
             onFullscreenExit = {
-                // ── Shrink playerWebView back into videoContainer ─────────────
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 WindowCompat.setDecorFitsSystemWindows(window, true)
                 WindowInsetsControllerCompat(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
-                (playerWebView.parent as? ViewGroup)?.removeView(playerWebView)
-                playerWebView.translationZ = 0f
-                videoContainer.addView(
-                    playerWebView,
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                )
+                // Restore videoContainer to its original 16:9 height.
+                val screenWidth = resources.displayMetrics.widthPixels
+                val videoHeight = screenWidth * 9 / 16
+                videoContainer.layoutParams = videoContainer.layoutParams.apply {
+                    width = ViewGroup.LayoutParams.MATCH_PARENT
+                    height = videoHeight
+                }
+                // Restore all sibling views that were hidden during fullscreen.
+                for (i in 0 until (videoContainer.parent as? ViewGroup)?.childCount!!) {
+                    (videoContainer.parent as ViewGroup).getChildAt(i).visibility = View.VISIBLE
+                }
                 playerModal.visibility = View.VISIBLE
             }
         ).also { chromeClient = it }
