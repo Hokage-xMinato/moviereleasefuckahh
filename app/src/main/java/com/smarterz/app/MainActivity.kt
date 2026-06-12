@@ -1468,8 +1468,8 @@ class MainActivity : AppCompatActivity() {
         s.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         s.allowFileAccess = false
         s.allowContentAccess = false
-        s.setSupportMultipleWindows(false)
-        s.javaScriptCanOpenWindowsAutomatically = false
+        s.setSupportMultipleWindows(true)
+        s.javaScriptCanOpenWindowsAutomatically = true
         s.useWideViewPort = true
         s.loadWithOverviewMode = true
         s.setSupportZoom(false)
