@@ -325,10 +325,7 @@ class SmartWebViewClient(
     private val onError: ((String) -> Unit)? = null
 ) : WebViewClient() {
 
-    private val ESCAPE_SCHEMES = setOf(
-        "intent", "android-app", "market", "tel", "sms",
-        "mailto", "whatsapp", "tg", "viber", "fb", "twitter"
-    )
+    
 
     private val SPOOF_JS = """
         (function() {
