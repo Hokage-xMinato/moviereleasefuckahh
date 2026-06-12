@@ -934,23 +934,28 @@ class SmartChromeClient(
         onFullscreenEnter()
     }
 
-    // ── Kotlin-side: exit fullscreen ──────────────────────────────────────────
+        // ── Kotlin-side: exit fullscreen ──────────────────────────────────────────
     override fun onHideCustomView() {
-    val view = customView ?: return
+        // ADD THIS GUARD: Ignore ad-driven native exits!
+        if (!userRequestedExit) {
+            return
+        }
 
-    // You MUST remove the view. When Chromium calls this, the video
-    // surface is already dead. Keeping it on screen causes the black void.
-    fullscreenContainer.removeView(view)
-    fullscreenContainer.visibility = View.GONE
-    
-    customViewCallback?.onCustomViewHidden()
-    
-    customView = null
-    customViewCallback = null
-    userRequestedExit = false
-    
-    onFullscreenExit()
-}
+        val view = customView ?: return
+
+        // You MUST remove the view. When Chromium calls this...
+        fullscreenContainer.removeView(view)
+        fullscreenContainer.visibility = View.GONE
+        
+        customViewCallback?.onCustomViewHidden()
+        
+        customView = null
+        customViewCallback = null
+        userRequestedExit = false
+        
+        onFullscreenExit()
+    }
+
 
     fun isFullscreen(): Boolean = customView != null
 
@@ -1463,8 +1468,8 @@ class MainActivity : AppCompatActivity() {
         s.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         s.allowFileAccess = false
         s.allowContentAccess = false
-        s.setSupportMultipleWindows(true)
-        s.javaScriptCanOpenWindowsAutomatically = true
+        s.setSupportMultipleWindows(false)
+        s.javaScriptCanOpenWindowsAutomatically = false
         s.useWideViewPort = true
         s.loadWithOverviewMode = true
         s.setSupportZoom(false)
