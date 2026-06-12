@@ -7,6 +7,8 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -330,15 +332,20 @@ class SmartWebViewClient(
 
     private val SPOOF_JS = """
         (function() {
-            if (window.__sz_patched) return;
-            window.__sz_patched = true;
+            // ── Guard: run once per window, re-run on each inject ─────────────
+            // We intentionally allow re-injection (no early-return guard) so that
+            // iframes and dynamic pages always get the full patch applied.
 
-            // ── A1. Webdriver fingerprint ──────────────────────────────────────
+            // ═══════════════════════════════════════════════════════════════════
+            // SECTION 1 — NAVIGATOR / FINGERPRINT SPOOFING
+            // ═══════════════════════════════════════════════════════════════════
             try {
                 Object.defineProperty(navigator, 'webdriver', { get: function() { return false; } });
             } catch(e) {}
 
-            // ── A2. Viewport ───────────────────────────────────────────────────
+            // ═══════════════════════════════════════════════════════════════════
+            // SECTION 2 — VIEWPORT
+            // ═══════════════════════════════════════════════════════════════════
             try {
                 var vp = document.querySelector('meta[name=viewport]');
                 var vc = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
@@ -350,89 +357,240 @@ class SmartWebViewClient(
                 }
             } catch(e) {}
 
-            // ── A3. Block window.open for non-player domains ───────────────────
+            // ═══════════════════════════════════════════════════════════════════
+            // SECTION 3 — BLOCK window.open (allow only player domains)
+            // ═══════════════════════════════════════════════════════════════════
             try {
-                var _open = window.open;
-                window.open = function(url, name, features) {
-                    if (url && (url.indexOf('vidsrc') !== -1 || url.indexOf('cloudnestra') !== -1)) {
-                        return _open.call(window, url, name, features);
-                    }
-                    return { closed: true, close: function(){} };
-                };
-            } catch(e) {}
-
-            // ── A4. Block exitFullscreen calls from ads ─────────────────────────
-            // KEY FIX: Prevent black screen during ads in fullscreen
-            try {
-                var _exit = document.exitFullscreen || document.webkitExitFullscreen;
-                if (_exit) {
-                    document.exitFullscreen = function() { return Promise.resolve(); };
-                    document.webkitExitFullscreen = function() {};
-                }
-                // Also intercept on the video element to prevent ads killing fullscreen
-                Object.defineProperty(HTMLVideoElement.prototype, 'exitFullscreen', {
-                    get: function() { return function() { return Promise.resolve(); }; }
-                });
-            } catch(e) {}
-
-            // ── A5. Prevent ad iframes from going fullscreen and then exiting ──
-            try {
-                var _reqFS = Element.prototype.requestFullscreen || Element.prototype.webkitRequestFullscreen;
-                var allowedParents = ['video', 'div#player', '[class*="player"]', '[id*="player"]'];
-                var origReqFS = Element.prototype.requestFullscreen;
-                if (origReqFS) {
-                    Element.prototype.requestFullscreen = function() {
-                        var tag = this.tagName ? this.tagName.toLowerCase() : '';
-                        if (tag === 'video' || tag === 'div' || tag === 'iframe') {
-                            return origReqFS.call(this);
+                if (!window.__sz_open_patched) {
+                    window.__sz_open_patched = true;
+                    var _origOpen = window.open;
+                    window.open = function(url, name, features) {
+                        if (!url) return { closed: true, close: function(){} };
+                        var u = String(url).toLowerCase();
+                        var allowed = ['vidsrc', 'cloudnestra', 'vidplay', 'filemoon',
+                                       'vidcloud', 'megacloud', 'rabbitstream'];
+                        for (var i = 0; i < allowed.length; i++) {
+                            if (u.indexOf(allowed[i]) !== -1) {
+                                return _origOpen ? _origOpen.call(window, url, name, features) : null;
+                            }
                         }
-                        return Promise.reject(new Error('blocked'));
+                        console.log('[SZ] Blocked window.open:', url);
+                        return { closed: true, close: function(){} };
                     };
                 }
             } catch(e) {}
 
-            // ── B. Ad overlay eliminator ───────────────────────────────────────
+            // ═══════════════════════════════════════════════════════════════════
+            // SECTION 4 — IRON-LOCK exitFullscreen / webkitExitFullscreen
+            //
+            // This is the PRIMARY fix for the black-screen issue.
+            // Ads call document.exitFullscreen() or video.webkitExitFullscreen()
+            // to pull the player out of fullscreen, leaving a black void.
+            // We make ALL exitFullscreen calls completely silent no-ops.
+            // The only real exit is via the user pressing Back (handled in Kotlin).
+            // ═══════════════════════════════════════════════════════════════════
+            try {
+                // ── 4a. document-level exit (standard + webkit) ───────────────
+                var noop = function() { return Promise.resolve(); };
+                var noopVoid = function() {};
+
+                Object.defineProperty(document, 'exitFullscreen', {
+                    get: function() { return noop; },
+                    set: function() {},
+                    configurable: true
+                });
+                Object.defineProperty(document, 'webkitExitFullscreen', {
+                    get: function() { return noopVoid; },
+                    set: function() {},
+                    configurable: true
+                });
+                Object.defineProperty(document, 'mozCancelFullScreen', {
+                    get: function() { return noopVoid; },
+                    set: function() {},
+                    configurable: true
+                });
+                Object.defineProperty(document, 'msExitFullscreen', {
+                    get: function() { return noopVoid; },
+                    set: function() {},
+                    configurable: true
+                });
+
+                // ── 4b. Element prototype (video, div, iframe etc.) ───────────
+                ['exitFullscreen','webkitExitFullscreen','mozCancelFullScreen','msExitFullscreen'].forEach(function(fn) {
+                    try {
+                        Object.defineProperty(HTMLElement.prototype, fn, {
+                            get: function() { return fn === 'exitFullscreen' ? noop : noopVoid; },
+                            set: function() {},
+                            configurable: true
+                        });
+                    } catch(e2) {}
+                });
+
+                // ── 4c. Spoof fullscreen state so ads think they're NOT in FS ─
+                // If ads check document.fullscreenElement before calling exit,
+                // returning null makes them think exit is unnecessary.
+                try {
+                    Object.defineProperty(document, 'fullscreenElement', {
+                        get: function() { return null; },
+                        configurable: true
+                    });
+                    Object.defineProperty(document, 'webkitFullscreenElement', {
+                        get: function() { return null; },
+                        configurable: true
+                    });
+                } catch(e3) {}
+
+                // ── 4d. Intercept fullscreenchange events from ads ─────────────
+                // Some ad SDKs listen to fullscreenchange and react by calling
+                // exitFullscreen. We intercept and kill those events.
+                try {
+                    var _origAEL = EventTarget.prototype.addEventListener;
+                    var BLOCK_FS_EVENTS = { 'fullscreenchange': true, 'webkitfullscreenchange': true,
+                                            'mozfullscreenchange': true, 'MSFullscreenChange': true,
+                                            'fullscreenerror': true, 'webkitfullscreenerror': true };
+                    EventTarget.prototype.addEventListener = function(type, listener, opts) {
+                        if (BLOCK_FS_EVENTS[type]) {
+                            // Allow the player's own listeners (on document or body)
+                            // but block listeners registered by iframes/ad scripts
+                            var el = this;
+                            if (el !== document && el !== document.body && el !== window) {
+                                console.log('[SZ] Blocked FS event listener:', type, 'on', el);
+                                return;
+                            }
+                        }
+                        return _origAEL.call(this, type, listener, opts);
+                    };
+                } catch(e4) {}
+
+            } catch(e) {}
+
+            // ═══════════════════════════════════════════════════════════════════
+            // SECTION 5 — LOCK requestFullscreen (prevent ad iframes from
+            //             grabbing fullscreen and then exiting it to go black)
+            // ═══════════════════════════════════════════════════════════════════
+            try {
+                if (!Element.prototype.__sz_fs_patched) {
+                    Element.prototype.__sz_fs_patched = true;
+                    var _origRFS = Element.prototype.requestFullscreen ||
+                                   Element.prototype.webkitRequestFullscreen ||
+                                   Element.prototype.mozRequestFullScreen;
+
+                    var _patchFS = function() {
+                        var el = this;
+                        var tag = (el.tagName || '').toLowerCase();
+                        var id  = (el.id || '').toLowerCase();
+                        var cls = (el.className || '').toLowerCase();
+
+                        // Allow: video elements, known player containers
+                        var isPlayerEl = tag === 'video'
+                            || id.indexOf('player') !== -1
+                            || id.indexOf('video') !== -1
+                            || cls.indexOf('player') !== -1
+                            || cls.indexOf('video-js') !== -1
+                            || cls.indexOf('jw-') !== -1
+                            || cls.indexOf('plyr') !== -1;
+
+                        // Block: ad iframes, small divs, anchor elements
+                        var isAdEl = tag === 'a'
+                            || tag === 'span'
+                            || (tag === 'iframe' && !isPlayerEl)
+                            || (tag === 'div' && !isPlayerEl
+                                && el.children.length === 0);
+
+                        if (isAdEl) {
+                            console.log('[SZ] Blocked requestFullscreen on ad element:', tag, id);
+                            return Promise.reject(new Error('[SZ] Blocked'));
+                        }
+
+                        return _origRFS ? _origRFS.call(el) : Promise.resolve();
+                    };
+
+                    try { Element.prototype.requestFullscreen = _patchFS; } catch(e) {}
+                    try { Element.prototype.webkitRequestFullscreen = _patchFS; } catch(e) {}
+                }
+            } catch(e) {}
+
+            // ═══════════════════════════════════════════════════════════════════
+            // SECTION 6 — AD OVERLAY ELIMINATOR
+            //
+            // Detects and nukes clickable overlay elements (the kind that open
+            // ad tabs when you tap the video). Uses the same logic that works
+            // in normal mode — now also patched into iframes via Section 7.
+            // ═══════════════════════════════════════════════════════════════════
             function isAdOverlay(el) {
                 try {
                     if (!el || !el.tagName) return false;
                     var tag = el.tagName.toUpperCase();
+
+                    // Never kill actual player elements
+                    if (tag === 'VIDEO' || tag === 'CANVAS') return false;
+                    if (el.querySelector && el.querySelector('video, canvas')) return false;
+
                     var style = window.getComputedStyle(el);
                     var pos = style.position;
+                    var display = style.display;
+                    if (display === 'none') return false;
                     if (pos !== 'absolute' && pos !== 'fixed') return false;
 
                     var rect = el.getBoundingClientRect();
-                    var sw = window.innerWidth || document.documentElement.clientWidth || 1;
+                    var sw = window.innerWidth  || document.documentElement.clientWidth  || 1;
                     var sh = window.innerHeight || document.documentElement.clientHeight || 1;
-                    if (rect.width < sw * 0.4 || rect.height < sh * 0.4) return false;
+
+                    // Must cover at least 30% of screen in each dimension
+                    if (rect.width < sw * 0.3 || rect.height < sh * 0.3) return false;
+
+                    // High z-index + transparent/semi-transparent = almost certainly ad overlay
+                    var zi = parseInt(style.zIndex) || 0;
+                    var bg = style.backgroundColor;
+                    var isTransparent = bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)'
+                                     || bg.indexOf('rgba') !== -1;
 
                     if (tag === 'A') {
                         var href = (el.getAttribute('href') || '').trim();
                         if (!href || href === '#' || href.startsWith('javascript')) return false;
+                        // A large absolute/fixed anchor with an external href = ad
                         return true;
                     }
-                    if (el.querySelector('video, iframe, canvas')) return false;
+
+                    // Check onclick for navigation
                     var oc = el.getAttribute('onclick') || '';
-                    if (oc && (oc.indexOf('location') !== -1 || oc.indexOf('open') !== -1)) return true;
+                    if (oc && (oc.indexOf('location') !== -1 || oc.indexOf('open') !== -1
+                            || oc.indexOf('href') !== -1)) return true;
+
+                    // Large transparent/high-z overlay div with no media children
+                    if ((isTransparent || zi > 100) && tag === 'DIV') {
+                        var hasMedia = el.querySelector('video, iframe, canvas, img[src*="player"]');
+                        if (!hasMedia) return true;
+                    }
+
                     return false;
                 } catch(e) { return false; }
             }
 
             function eliminateOverlay(el) {
                 try {
+                    // For anchor tags — remove entirely so no redirect possible
                     if (el.tagName && el.tagName.toUpperCase() === 'A') {
                         el.remove();
                         return;
                     }
+                    // For divs — make untouchable but keep them (removing may break layout)
                     el.style.setProperty('pointer-events', 'none', 'important');
                     el.style.setProperty('z-index', '-9999', 'important');
+                    el.style.setProperty('opacity', '0', 'important');
+                    // Kill any onclick
+                    el.onclick = null;
+                    el.removeAttribute('onclick');
                 } catch(e) {}
             }
 
             function scanAndEliminate(root) {
                 try {
-                    var candidates = (root || document).querySelectorAll(
-                        'a[href], div[onclick], span[onclick], div[style*="position"], a[style*="position"]'
-                    );
+                    var sel = 'a[href], div[onclick], span[onclick],'
+                            + 'div[style*="position:fixed"], div[style*="position: fixed"],'
+                            + 'div[style*="position:absolute"], div[style*="position: absolute"],'
+                            + 'a[style*="position"]';
+                    var candidates = (root || document).querySelectorAll(sel);
                     for (var i = 0; i < candidates.length; i++) {
                         if (isAdOverlay(candidates[i])) {
                             eliminateOverlay(candidates[i]);
@@ -441,51 +599,166 @@ class SmartWebViewClient(
                 } catch(e) {}
             }
 
+            // Run immediately + on DOM ready
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', function() { scanAndEliminate(document); });
             } else {
                 scanAndEliminate(document);
             }
 
+            // ── Mutation observer — catches dynamically injected ad overlays ──
             try {
-                var observer = new MutationObserver(function(mutations) {
-                    for (var i = 0; i < mutations.length; i++) {
-                        var added = mutations[i].addedNodes;
-                        for (var j = 0; j < added.length; j++) {
-                            var node = added[j];
-                            if (node.nodeType !== 1) continue;
-                            if (isAdOverlay(node)) {
-                                eliminateOverlay(node);
-                            } else if (node.querySelectorAll) {
-                                scanAndEliminate(node);
+                if (!window.__sz_observer) {
+                    window.__sz_observer = new MutationObserver(function(mutations) {
+                        for (var mi = 0; mi < mutations.length; mi++) {
+                            var added = mutations[mi].addedNodes;
+                            for (var ni = 0; ni < added.length; ni++) {
+                                var node = added[ni];
+                                if (node.nodeType !== 1) continue;
+                                if (isAdOverlay(node)) {
+                                    eliminateOverlay(node);
+                                } else if (node.querySelectorAll) {
+                                    scanAndEliminate(node);
+                                }
+                            }
+                            // Also check attribute mutations (style changes that make an
+                            // existing div become an overlay)
+                            if (mutations[mi].type === 'attributes') {
+                                var target = mutations[mi].target;
+                                if (target && isAdOverlay(target)) eliminateOverlay(target);
                             }
                         }
-                    }
-                });
-                observer.observe(document.documentElement, {
-                    childList: true,
-                    subtree: true
-                });
+                    });
+                    window.__sz_observer.observe(document.documentElement, {
+                        childList:  true,
+                        subtree:    true,
+                        attributes: true,
+                        attributeFilter: ['style', 'class', 'onclick', 'href']
+                    });
+                }
             } catch(e) {}
 
-            // ── B2. Last-resort: click/touch capture ───────────────────────────
+            // ── Touch/click capture — last-resort ad-tap blocker ─────────────
             try {
-                function blockIfOverlay(e) {
-                    var node = e.target;
-                    for (var i = 0; i < 6; i++) {
-                        if (!node || node === document.body) break;
-                        if (isAdOverlay(node)) {
-                            e.preventDefault();
-                            e.stopImmediatePropagation();
-                            eliminateOverlay(node);
+                if (!window.__sz_touch_patched) {
+                    window.__sz_touch_patched = true;
+                    function blockIfOverlay(e) {
+                        var node = e.target;
+                        for (var i = 0; i < 8; i++) {
+                            if (!node || node === document.body || node === document.documentElement) break;
+                            if (isAdOverlay(node)) {
+                                e.preventDefault();
+                                e.stopImmediatePropagation();
+                                eliminateOverlay(node);
+                                return;
+                            }
+                            node = node.parentElement;
+                        }
+                    }
+                    document.addEventListener('click',      blockIfOverlay, { capture: true, passive: false });
+                    document.addEventListener('touchstart', blockIfOverlay, { capture: true, passive: false });
+                    document.addEventListener('touchend',   blockIfOverlay, { capture: true, passive: false });
+                    document.addEventListener('mousedown',  blockIfOverlay, { capture: true, passive: false });
+                }
+            } catch(e) {}
+
+            // ═══════════════════════════════════════════════════════════════════
+            // SECTION 7 — INJECT INTO ALL IFRAMES
+            //
+            // When fullscreen is active, the player content lives inside iframes.
+            // We must patch those iframes too, or ads inside them can still fire
+            // exitFullscreen / overlay redirects.
+            // ═══════════════════════════════════════════════════════════════════
+            try {
+                function patchIframe(iframe) {
+                    try {
+                        var iw = iframe.contentWindow;
+                        var id2 = iframe.contentDocument;
+                        if (!iw || !id2) return;
+                        // Apply same exitFullscreen lock inside the iframe's window
+                        var n = function() { return Promise.resolve(); };
+                        var nv = function() {};
+                        try { Object.defineProperty(id2, 'exitFullscreen',        { get: function(){ return n;  }, configurable: true }); } catch(e){}
+                        try { Object.defineProperty(id2, 'webkitExitFullscreen',  { get: function(){ return nv; }, configurable: true }); } catch(e){}
+                        try { Object.defineProperty(iw,  'exitFullscreen',        { get: function(){ return n;  }, configurable: true }); } catch(e){}
+                        try { Object.defineProperty(iw,  'webkitExitFullscreen',  { get: function(){ return nv; }, configurable: true }); } catch(e){}
+                        // Block window.open inside iframes too
+                        try { iw.open = function() { return { closed: true, close: function(){} }; }; } catch(e){}
+                    } catch(e) {}
+                }
+
+                // Patch existing iframes
+                var iframes = document.querySelectorAll('iframe');
+                for (var ii = 0; ii < iframes.length; ii++) { patchIframe(iframes[ii]); }
+
+                // Patch iframes added later
+                if (!window.__sz_iframe_observer) {
+                    window.__sz_iframe_observer = new MutationObserver(function(muts) {
+                        for (var mi2 = 0; mi2 < muts.length; mi2++) {
+                            var added2 = muts[mi2].addedNodes;
+                            for (var ni2 = 0; ni2 < added2.length; ni2++) {
+                                var n2 = added2[ni2];
+                                if (!n2 || n2.nodeType !== 1) continue;
+                                if (n2.tagName === 'IFRAME') {
+                                    n2.addEventListener('load', function() { patchIframe(this); });
+                                    patchIframe(n2);
+                                }
+                                // Also check children of added nodes
+                                var childIframes = n2.querySelectorAll ? n2.querySelectorAll('iframe') : [];
+                                for (var ci = 0; ci < childIframes.length; ci++) {
+                                    childIframes[ci].addEventListener('load', function() { patchIframe(this); });
+                                    patchIframe(childIframes[ci]);
+                                }
+                            }
+                        }
+                    });
+                    window.__sz_iframe_observer.observe(document.documentElement, {
+                        childList: true,
+                        subtree:   true
+                    });
+                }
+            } catch(e) {}
+
+            // ═══════════════════════════════════════════════════════════════════
+            // SECTION 8 — LOCATION / HISTORY HIJACK PREVENTION
+            //
+            // Some ads change window.location.href directly.
+            // We block any navigation to non-player domains.
+            // ═══════════════════════════════════════════════════════════════════
+            try {
+                if (!window.__sz_location_patched) {
+                    window.__sz_location_patched = true;
+                    var PLAYER_DOMAINS = ['vidsrc', 'cloudnestra', 'vidplay', 'filemoon',
+                                          'vidcloud', 'megacloud', 'rabbitstream', 'embed'];
+                    function isPlayerUrl(url) {
+                        if (!url) return false;
+                        var u = String(url).toLowerCase();
+                        if (u.startsWith('blob:') || u.startsWith('data:') || u === '#') return true;
+                        for (var i = 0; i < PLAYER_DOMAINS.length; i++) {
+                            if (u.indexOf(PLAYER_DOMAINS[i]) !== -1) return true;
+                        }
+                        return false;
+                    }
+                    // Intercept history.pushState / replaceState
+                    var _origPush    = history.pushState;
+                    var _origReplace = history.replaceState;
+                    history.pushState = function(state, title, url) {
+                        if (url && !isPlayerUrl(url)) {
+                            console.log('[SZ] Blocked history.pushState:', url);
                             return;
                         }
-                        node = node.parentElement;
-                    }
+                        return _origPush.apply(history, arguments);
+                    };
+                    history.replaceState = function(state, title, url) {
+                        if (url && !isPlayerUrl(url)) {
+                            console.log('[SZ] Blocked history.replaceState:', url);
+                            return;
+                        }
+                        return _origReplace.apply(history, arguments);
+                    };
                 }
-                document.addEventListener('click',    blockIfOverlay, true);
-                document.addEventListener('touchend', blockIfOverlay, true);
             } catch(e) {}
+
         })();
     """.trimIndent()
 
@@ -579,76 +852,115 @@ class SmartWebViewClient(
 }
 
 // ─── SmartChromeClient ────────────────────────────────────────────────────────
-
+//
+// Design principle: treat fullscreen EXACTLY like normal mode.
+//
+// In normal mode, when an ad overlay is tapped the JS layer suppresses it.
+// In fullscreen, the problem is at a LOWER level: the ad calls the browser's
+// native exitFullscreen() API, which triggers onHideCustomView() in Java/Kotlin
+// BEFORE any JS can react.  The screen goes black because:
+//   1. onHideCustomView removes the video view from fullscreenContainer
+//   2. The playerModal is still INVISIBLE (we hid it on fullscreen enter)
+//   3. Result: black screen + normal mode restored
+//
+// Fix strategy:
+//   • NEVER actually hide the custom view unless the user explicitly pressed Back.
+//   • Track user intent via a dedicated flag set ONLY from the back-press handler.
+//   • Any onHideCustomView call that arrives WITHOUT that flag = ad-driven = ignore.
+//   • We don't even need the re-entry hack anymore — we just refuse to hide.
+//   • The JS layer (Section 4 of SPOOF_JS) kills exitFullscreen at the JS level
+//     before it even reaches here; this Kotlin guard is the second line of defence.
+//
 class SmartChromeClient(
-    private val fullscreenContainer: FrameLayout,   // kept for API compat, not used for rendering
+    private val fullscreenContainer: FrameLayout,
     private val onFullscreenEnter: () -> Unit,
     private val onFullscreenExit: () -> Unit
 ) : WebChromeClient() {
 
-    // ── No custom-view system ─────────────────────────────────────────────────
-    // The custom-view path (onShowCustomView / onHideCustomView) moves video
-    // rendering to a brand-new Android Surface.  Every time that surface is
-    // touched — by an ad, by a focus change, by anything — it redraws black.
-    // There is no reliable way to prevent that flash from inside the app.
-    //
-    // Instead we track fullscreen state ourselves and let the Activity expand
-    // playerWebView to fill the screen.  The WebView keeps rendering on its
-    // own surface the whole time, exactly like normal (non-fullscreen) mode,
-    // so ads cannot cause a black screen any more than they can in normal mode.
+    private var customView: View? = null
+    private var customViewCallback: CustomViewCallback? = null
 
-    private var _isFullscreen = false
-    private var pendingCallback: CustomViewCallback? = null
+    // Only true when the USER deliberately exits fullscreen (back press / close btn).
+    // Any onHideCustomView() arriving while this is false is treated as spurious (ad).
+    @Volatile private var userRequestedExit = false
 
     private val POPUP_ALLOWED_HOSTS = setOf(
         "vidsrc.me", "vidsrc.to", "vidsrc.xyz",
         "vidsrc.net", "vidsrc.in", "vidsrc.pm", "vidsrc.rip",
-        "cloudnestra.com"
+        "cloudnestra.com", "vidplay.online", "filemoon.sx"
     )
 
+    // ── Called by back-press / close button ONLY ──────────────────────────────
+    fun requestUserExit() {
+        userRequestedExit = true
+        onHideCustomView()
+    }
+
+    // ── Kotlin-side: enter fullscreen ─────────────────────────────────────────
     override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
-        // Immediately acknowledge the callback so the WebView isn't blocked,
-        // but do NOT add the view anywhere — we use playerWebView directly.
-        pendingCallback = callback
-        if (!_isFullscreen) {
-            _isFullscreen = true
-            fullscreenEnteredAt = System.currentTimeMillis()
-            onFullscreenEnter()
+        if (view == null) return
+
+        // If already in fullscreen, quietly replace (shouldn't normally happen)
+        if (customView != null) {
+            fullscreenContainer.removeView(customView)
+            customViewCallback?.onCustomViewHidden()
         }
+
+        customView = view
+        customViewCallback = callback
+        userRequestedExit = false
+
+        fullscreenContainer.addView(
+            view,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        fullscreenContainer.visibility = View.VISIBLE
+        onFullscreenEnter()
     }
 
+    // ── Kotlin-side: exit fullscreen ──────────────────────────────────────────
     override fun onHideCustomView() {
-        if (!_isFullscreen) return
-        val elapsed = System.currentTimeMillis() - fullscreenEnteredAt
-        // Accept the exit if:
-        //  (a) the Activity explicitly requested it (back key, our exit button), OR
-        //  (b) it has been at least 800 ms since fullscreen started — meaning this
-        //      is a real user action from the embed player controls, not an ad bounce.
-        if (intentionalExit || elapsed > 800L) {
-            _isFullscreen = false
-            intentionalExit = false
-            pendingCallback?.onCustomViewHidden()
-            pendingCallback = null
-            onFullscreenExit()
+        // ── CORE GUARD ────────────────────────────────────────────────────────
+        // If we're in fullscreen AND the user did NOT request an exit,
+        // this call came from an ad / script. Silently ignore it.
+        // The video keeps playing. Screen stays black-screen-free.
+        if (customView != null && !userRequestedExit) {
+            // Still call onCustomViewHidden so the browser's internal state is
+            // consistent, but do NOT remove the view or call onFullscreenExit.
+            // This is the key difference from the previous approach.
+            customViewCallback?.onCustomViewHidden()
+            // Re-assign a fresh callback so future exit still works
+            customViewCallback = null
+            // Do NOT touch customView, fullscreenContainer, or onFullscreenExit
+            return
         }
-        // Spurious (ad-driven immediate) call → do nothing at all.
+
+        // ── Legitimate user exit ──────────────────────────────────────────────
+        userRequestedExit = false
+        val view = customView ?: return
+
+        fullscreenContainer.removeView(view)
+        fullscreenContainer.visibility = View.GONE
+        customViewCallback?.onCustomViewHidden()
+        customView = null
+        customViewCallback = null
+        onFullscreenExit()
     }
 
-    private var intentionalExit = false
-    private var fullscreenEnteredAt = 0L
+    fun isFullscreen(): Boolean = customView != null
 
-    fun markIntentionalExit() { intentionalExit = true }
-
-    fun isFullscreen() = _isFullscreen
-
+    // Called only from back-press / close button
     fun exitFullscreenIfNeeded(): Boolean {
-        return if (_isFullscreen) {
-            markIntentionalExit()
-            onHideCustomView()
+        return if (customView != null) {
+            requestUserExit()
             true
         } else false
     }
 
+    // ── Popup / new window: only let player domains through ───────────────────
     override fun onCreateWindow(
         view: WebView?,
         isDialog: Boolean,
@@ -663,7 +975,6 @@ class SmartChromeClient(
             isFocusable = false
             isFocusableInTouchMode = false
         }
-
         tempWebView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(v: WebView?, req: WebResourceRequest?): Boolean {
                 val host = req?.url?.host?.lowercase()?.removePrefix("www.") ?: return true
@@ -676,7 +987,7 @@ class SmartChromeClient(
             override fun shouldOverrideUrlLoading(v: WebView?, url: String?): Boolean {
                 if (url == null) return true
                 val host = try {
-                    Uri.parse(url).host?.lowercase()?.removePrefix("www.") ?: return true
+                    android.net.Uri.parse(url).host?.lowercase()?.removePrefix("www.") ?: return true
                 } catch (e: Exception) { return true }
                 if (POPUP_ALLOWED_HOSTS.any { host == it || host.endsWith(".$it") }) {
                     mainView.loadUrl(url)
@@ -684,24 +995,16 @@ class SmartChromeClient(
                 return true
             }
         }
-
         transport.webView = tempWebView
         resultMsg.sendToTarget()
         return true
     }
 
-    override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult?):
-        Boolean { result?.cancel(); return true }
-
-    override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult?):
-        Boolean { result?.cancel(); return true }
-
-    override fun onJsPrompt(view: WebView?, url: String?, message: String?,
-        defaultValue: String?, result: JsPromptResult?): Boolean { result?.cancel(); return true }
-
-    override fun onJsBeforeUnload(
-        view: WebView?, url: String?, message: String?, result: JsResult?
-    ): Boolean { result?.cancel(); return true }
+    // Silence all JS dialogs (ads love these)
+    override fun onJsAlert(v: WebView?, u: String?, m: String?, r: JsResult?): Boolean      { r?.cancel(); return true }
+    override fun onJsConfirm(v: WebView?, u: String?, m: String?, r: JsResult?): Boolean    { r?.cancel(); return true }
+    override fun onJsPrompt(v: WebView?, u: String?, m: String?, d: String?, r: JsPromptResult?): Boolean { r?.cancel(); return true }
+    override fun onJsBeforeUnload(v: WebView?, u: String?, m: String?, r: JsResult?): Boolean { r?.cancel(); return true }
 }
 
 // ─── Adapters ─────────────────────────────────────────────────────────────────
@@ -929,8 +1232,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var prevEpBtn: ImageButton
     private lateinit var nextEpBtn: ImageButton
     private lateinit var chromeClient: SmartChromeClient
-    private lateinit var fullscreenBtn: ImageButton
-    private lateinit var fullscreenExitBtn: ImageButton   // floating exit button shown over decor
 
     // ── State ─────────────────────────────────────────────────────────────────
     private val api = TmdbApi()
@@ -1130,34 +1431,6 @@ class MainActivity : AppCompatActivity() {
         val screenWidth = resources.displayMetrics.widthPixels
         val videoHeight = screenWidth * 9 / 16
         videoContainer.layoutParams = videoContainer.layoutParams.apply { height = videoHeight }
-
-        // ── Fullscreen toggle button (bottom-right corner of videoContainer) ──
-        val density = resources.displayMetrics.density
-        val btnSize = (40 * density).toInt()
-        val margin = (8 * density).toInt()
-
-        fullscreenBtn = ImageButton(this).apply {
-            setImageResource(android.R.drawable.ic_menu_crop)
-            setBackgroundColor(Color.parseColor("#99000000"))
-            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
-            setPadding(6, 6, 6, 6)
-            contentDescription = "Enter fullscreen"
-        }
-        val fsParams = FrameLayout.LayoutParams(btnSize, btnSize).apply {
-            gravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
-            setMargins(0, 0, margin, margin)
-        }
-        videoContainer.addView(fullscreenBtn, fsParams)
-
-        // ── Floating exit-fullscreen button added to the decor when in fullscreen ──
-        fullscreenExitBtn = ImageButton(this).apply {
-            setImageResource(android.R.drawable.ic_menu_revert)
-            setBackgroundColor(Color.parseColor("#99000000"))
-            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
-            setPadding(6, 6, 6, 6)
-            contentDescription = "Exit fullscreen"
-            visibility = View.GONE
-        }
     }
 
     // ─── WebView Setup ────────────────────────────────────────────────────────
@@ -1170,7 +1443,8 @@ class MainActivity : AppCompatActivity() {
             fullscreenContainer,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         )
-        fullscreenContainer.visibility = View.GONE   // never used for rendering
+        fullscreenContainer.visibility = View.GONE
+        fullscreenContainer.setBackgroundColor(Color.BLACK)
 
         playerWebView.webViewClient = SmartWebViewClient(
             onPageReady = { playerLoadingOverlay.visibility = View.GONE },
@@ -1188,10 +1462,6 @@ class MainActivity : AppCompatActivity() {
         playerWebView.webChromeClient = SmartChromeClient(
             fullscreenContainer = fullscreenContainer,
             onFullscreenEnter = {
-                // Hide the player shell (title bar, controls, close button) so the
-                // WebView can fill the entire screen without any UI on top of it.
-                playerModal.visibility = View.INVISIBLE
-
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                 window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -1199,62 +1469,13 @@ class MainActivity : AppCompatActivity() {
                     ctrl.hide(WindowInsetsCompat.Type.systemBars())
                     ctrl.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 }
-
-                // Detach playerWebView from videoContainer and attach it directly
-                // to the decor so it fills the whole screen on the same surface.
-                (playerWebView.parent as? ViewGroup)?.removeView(playerWebView)
-                val decor = window.decorView as FrameLayout
-                decor.addView(
-                    playerWebView,
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                )
-                playerWebView.translationZ = 100f
-
-                // Add a small exit-fullscreen button in the top-right corner of the decor.
-                val density = resources.displayMetrics.density
-                val btnSize = (40 * density).toInt()
-                val margin = (8 * density).toInt()
-                if (fullscreenExitBtn.parent == null) {
-                    decor.addView(
-                        fullscreenExitBtn,
-                        FrameLayout.LayoutParams(btnSize, btnSize).apply {
-                            gravity = android.view.Gravity.TOP or android.view.Gravity.END
-                            setMargins(0, margin, margin, 0)
-                        }
-                    )
-                }
-                fullscreenExitBtn.translationZ = 200f
-                fullscreenExitBtn.visibility = View.VISIBLE
-                fullscreenExitBtn.setOnClickListener {
-                    if (::chromeClient.isInitialized) {
-                        chromeClient.markIntentionalExit()
-                        chromeClient.exitFullscreenIfNeeded()
-                    }
-                }
+                playerModal.visibility = View.INVISIBLE
             },
             onFullscreenExit = {
-                // Hide the exit button and restore the player shell.
-                fullscreenExitBtn.visibility = View.GONE
-
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 WindowCompat.setDecorFitsSystemWindows(window, true)
                 WindowInsetsControllerCompat(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
-
-                // Move playerWebView back into videoContainer.
-                (playerWebView.parent as? ViewGroup)?.removeView(playerWebView)
-                playerWebView.translationZ = 0f
-                videoContainer.addView(
-                    playerWebView,
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                )
-
                 playerModal.visibility = View.VISIBLE
             }
         ).also { chromeClient = it }
@@ -1375,24 +1596,6 @@ class MainActivity : AppCompatActivity() {
 
         // Player
         closePlayer.setOnClickListener { closePlayer() }
-
-        // Fullscreen toggle button on the video container
-        fullscreenBtn.setOnClickListener {
-            if (::chromeClient.isInitialized && chromeClient.isFullscreen()) {
-                chromeClient.markIntentionalExit()
-                chromeClient.exitFullscreenIfNeeded()
-            } else {
-                // Ask the WebView's page to enter fullscreen via JS
-                playerWebView.evaluateJavascript(
-                    "(function(){ var v = document.querySelector('video'); if(v) { " +
-                    "if(v.requestFullscreen) v.requestFullscreen(); " +
-                    "else if(v.webkitRequestFullscreen) v.webkitRequestFullscreen(); } " +
-                    "else { var p = document.querySelector('[class*=\"player\"], [id*=\"player\"], .jw-video, .plyr'); " +
-                    "if(p && p.requestFullscreen) p.requestFullscreen(); } })()",
-                    null
-                )
-            }
-        }
         prevEpBtn.setOnClickListener {
             if (currentEpisode > 1) { currentEpisode-- }
             else {
@@ -2003,7 +2206,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun closePlayer() {
         if (::chromeClient.isInitialized) {
-            chromeClient.markIntentionalExit()
             chromeClient.exitFullscreenIfNeeded()
         }
         playerModal.visibility = View.GONE
