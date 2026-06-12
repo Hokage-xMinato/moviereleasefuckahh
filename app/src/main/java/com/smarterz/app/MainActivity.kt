@@ -358,6 +358,15 @@ class SmartWebViewClient(
             } catch(e) {}
 
             // ═══════════════════════════════════════════════════════════════════
+            // SECTION 2.5 — REMOVE NATIVE TAP HIGHLIGHT
+            // ═══════════════════════════════════════════════════════════════════
+            try {
+                var style = document.createElement('style');
+                style.innerHTML = '* { -webkit-tap-highlight-color: transparent !important; }';
+                (document.head || document.documentElement).appendChild(style);
+            } catch(e) {}
+
+            // ═══════════════════════════════════════════════════════════════════
             // SECTION 3 — BLOCK window.open (allow only player domains)
             // ═══════════════════════════════════════════════════════════════════
             try {
@@ -923,32 +932,21 @@ class SmartChromeClient(
 
     // ── Kotlin-side: exit fullscreen ──────────────────────────────────────────
     override fun onHideCustomView() {
-        // ── CORE GUARD ────────────────────────────────────────────────────────
-        // If we're in fullscreen AND the user did NOT request an exit,
-        // this call came from an ad / script. Silently ignore it.
-        // The video keeps playing. Screen stays black-screen-free.
-        if (customView != null && !userRequestedExit) {
-            // Still call onCustomViewHidden so the browser's internal state is
-            // consistent, but do NOT remove the view or call onFullscreenExit.
-            // This is the key difference from the previous approach.
-            customViewCallback?.onCustomViewHidden()
-            // Re-assign a fresh callback so future exit still works
-            customViewCallback = null
-            // Do NOT touch customView, fullscreenContainer, or onFullscreenExit
-            return
-        }
+    val view = customView ?: return
 
-        // ── Legitimate user exit ──────────────────────────────────────────────
-        userRequestedExit = false
-        val view = customView ?: return
-
-        fullscreenContainer.removeView(view)
-        fullscreenContainer.visibility = View.GONE
-        customViewCallback?.onCustomViewHidden()
-        customView = null
-        customViewCallback = null
-        onFullscreenExit()
-    }
+    // You MUST remove the view. When Chromium calls this, the video
+    // surface is already dead. Keeping it on screen causes the black void.
+    fullscreenContainer.removeView(view)
+    fullscreenContainer.visibility = View.GONE
+    
+    customViewCallback?.onCustomViewHidden()
+    
+    customView = null
+    customViewCallback = null
+    userRequestedExit = false
+    
+    onFullscreenExit()
+}
 
     fun isFullscreen(): Boolean = customView != null
 
@@ -962,43 +960,16 @@ class SmartChromeClient(
 
     // ── Popup / new window: only let player domains through ───────────────────
     override fun onCreateWindow(
-        view: WebView?,
-        isDialog: Boolean,
-        isUserGesture: Boolean,
-        resultMsg: android.os.Message?
-    ): Boolean {
-        val mainView = view ?: return false
-        val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
-
-        val tempWebView = WebView(mainView.context).apply {
-            visibility = View.GONE
-            isFocusable = false
-            isFocusableInTouchMode = false
-        }
-        tempWebView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(v: WebView?, req: WebResourceRequest?): Boolean {
-                val host = req?.url?.host?.lowercase()?.removePrefix("www.") ?: return true
-                if (POPUP_ALLOWED_HOSTS.any { host == it || host.endsWith(".$it") }) {
-                    mainView.loadUrl(req.url.toString())
-                }
-                return true
-            }
-            @Suppress("DEPRECATION")
-            override fun shouldOverrideUrlLoading(v: WebView?, url: String?): Boolean {
-                if (url == null) return true
-                val host = try {
-                    android.net.Uri.parse(url).host?.lowercase()?.removePrefix("www.") ?: return true
-                } catch (e: Exception) { return true }
-                if (POPUP_ALLOWED_HOSTS.any { host == it || host.endsWith(".$it") }) {
-                    mainView.loadUrl(url)
-                }
-                return true
-            }
-        }
-        transport.webView = tempWebView
-        resultMsg.sendToTarget()
-        return true
-    }
+    view: WebView?,
+    isDialog: Boolean,
+    isUserGesture: Boolean,
+    resultMsg: android.os.Message?
+): Boolean {
+    // Returning false outright denies the creation of the new window.
+    // Because no window is created, Chromium's security trigger never fires,
+    // and it never forces the player out of fullscreen.
+    return false
+}
 
     // Silence all JS dialogs (ads love these)
     override fun onJsAlert(v: WebView?, u: String?, m: String?, r: JsResult?): Boolean      { r?.cancel(); return true }
