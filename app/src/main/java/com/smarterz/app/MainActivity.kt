@@ -367,28 +367,43 @@ class SmartWebViewClient(
             } catch(e) {}
 
             // ═══════════════════════════════════════════════════════════════════
-            // SECTION 3 — BLOCK window.open (allow only player domains)
+            // SECTION 3 — TOTAL NATIVE POPUP & HIGHLIGHT KILLER
             // ═══════════════════════════════════════════════════════════════════
             try {
+                // 1. Kill the blue tap highlight globally in the main document
+                var style = document.createElement('style');
+                style.innerHTML = '* { -webkit-tap-highlight-color: transparent !important; outline: none !important; }';
+                (document.head || document.documentElement).appendChild(style);
+
+                // 2. Absolute kill of window.open
+                // We no longer allow ANY exceptions. This stops Chromium from dropping fullscreen.
                 if (!window.__sz_open_patched) {
                     window.__sz_open_patched = true;
-                    var _origOpen = window.open;
-                    window.open = function(url, name, features) {
-                        if (!url) return { closed: true, close: function(){} };
-                        var u = String(url).toLowerCase();
-                        var allowed = ['vidsrc', 'cloudnestra', 'vidplay', 'filemoon',
-                                       'vidcloud', 'megacloud', 'rabbitstream'];
-                        for (var i = 0; i < allowed.length; i++) {
-                            if (u.indexOf(allowed[i]) !== -1) {
-                                return _origOpen ? _origOpen.call(window, url, name, features) : null;
-                            }
-                        }
-                        console.log('[SZ] Blocked window.open:', url);
+                    window.open = function() {
+                        console.log('[SZ] Blocked window.open entirely');
                         return { closed: true, close: function(){} };
                     };
                 }
+                
+                // 3. Intercept all clicks to prevent <a target="_blank"> from dropping fullscreen
+                if (!window.__sz_click_patched) {
+                    window.__sz_click_patched = true;
+                    document.addEventListener('click', function(e) {
+                        var el = e.target;
+                        while (el && el.tagName) {
+                            if (el.tagName.toUpperCase() === 'A') {
+                                var target = el.getAttribute('target');
+                                if (target === '_blank' || target === '_new') {
+                                    e.preventDefault();
+                                    console.log('[SZ] Blocked _blank link click');
+                                }
+                                break;
+                            }
+                            el = el.parentElement;
+                        }
+                    }, { capture: true });
+                }
             } catch(e) {}
-
             // ═══════════════════════════════════════════════════════════════════
             // SECTION 4 — IRON-LOCK exitFullscreen / webkitExitFullscreen
             //
@@ -673,10 +688,6 @@ class SmartWebViewClient(
 
             // ═══════════════════════════════════════════════════════════════════
             // SECTION 7 — INJECT INTO ALL IFRAMES
-            //
-            // When fullscreen is active, the player content lives inside iframes.
-            // We must patch those iframes too, or ads inside them can still fire
-            // exitFullscreen / overlay redirects.
             // ═══════════════════════════════════════════════════════════════════
             try {
                 function patchIframe(iframe) {
@@ -684,50 +695,43 @@ class SmartWebViewClient(
                         var iw = iframe.contentWindow;
                         var id2 = iframe.contentDocument;
                         if (!iw || !id2) return;
-                        // Apply same exitFullscreen lock inside the iframe's window
+
+                        // 1. Inject the CSS into the iframe to kill the blue highlight there too
+                        try {
+                            var s = id2.createElement('style');
+                            s.innerHTML = '* { -webkit-tap-highlight-color: transparent !important; outline: none !important; }';
+                            (id2.head || id2.documentElement).appendChild(s);
+                        } catch(e){}
+
+                        // 2. Complete window.open block inside iframe
+                        try { iw.open = function() { return { closed: true, close: function(){} }; }; } catch(e){}
+
+                        // 3. Block _blank clicks inside iframe
+                        try {
+                            id2.addEventListener('click', function(e) {
+                                var el = e.target;
+                                while (el && el.tagName) {
+                                    if (el.tagName.toUpperCase() === 'A') {
+                                        var target = el.getAttribute('target');
+                                        if (target === '_blank' || target === '_new') {
+                                            e.preventDefault();
+                                        }
+                                        break;
+                                    }
+                                    el = el.parentElement;
+                                }
+                            }, { capture: true });
+                        } catch(e){}
+
+                        // 4. Apply same exitFullscreen lock inside the iframe
                         var n = function() { return Promise.resolve(); };
                         var nv = function() {};
                         try { Object.defineProperty(id2, 'exitFullscreen',        { get: function(){ return n;  }, configurable: true }); } catch(e){}
                         try { Object.defineProperty(id2, 'webkitExitFullscreen',  { get: function(){ return nv; }, configurable: true }); } catch(e){}
                         try { Object.defineProperty(iw,  'exitFullscreen',        { get: function(){ return n;  }, configurable: true }); } catch(e){}
                         try { Object.defineProperty(iw,  'webkitExitFullscreen',  { get: function(){ return nv; }, configurable: true }); } catch(e){}
-                        // Block window.open inside iframes too
-                        try { iw.open = function() { return { closed: true, close: function(){} }; }; } catch(e){}
                     } catch(e) {}
                 }
-
-                // Patch existing iframes
-                var iframes = document.querySelectorAll('iframe');
-                for (var ii = 0; ii < iframes.length; ii++) { patchIframe(iframes[ii]); }
-
-                // Patch iframes added later
-                if (!window.__sz_iframe_observer) {
-                    window.__sz_iframe_observer = new MutationObserver(function(muts) {
-                        for (var mi2 = 0; mi2 < muts.length; mi2++) {
-                            var added2 = muts[mi2].addedNodes;
-                            for (var ni2 = 0; ni2 < added2.length; ni2++) {
-                                var n2 = added2[ni2];
-                                if (!n2 || n2.nodeType !== 1) continue;
-                                if (n2.tagName === 'IFRAME') {
-                                    n2.addEventListener('load', function() { patchIframe(this); });
-                                    patchIframe(n2);
-                                }
-                                // Also check children of added nodes
-                                var childIframes = n2.querySelectorAll ? n2.querySelectorAll('iframe') : [];
-                                for (var ci = 0; ci < childIframes.length; ci++) {
-                                    childIframes[ci].addEventListener('load', function() { patchIframe(this); });
-                                    patchIframe(childIframes[ci]);
-                                }
-                            }
-                        }
-                    });
-                    window.__sz_iframe_observer.observe(document.documentElement, {
-                        childList: true,
-                        subtree:   true
-                    });
-                }
-            } catch(e) {}
-
             // ═══════════════════════════════════════════════════════════════════
             // SECTION 8 — LOCATION / HISTORY HIJACK PREVENTION
             //
