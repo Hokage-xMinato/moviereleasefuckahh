@@ -791,14 +791,37 @@ class SmartWebViewClient(
         return false
     }
 
+        private val ESCAPE_SCHEMES = setOf(
+        "intent", "android-app", "market", "tel", "sms",
+        "mailto", "whatsapp", "tg", "viber", "fb", "twitter"
+    )
+
+    // ADD THIS: The domains we actually trust to load
+    private val PLAYER_DOMAINS = listOf(
+        "vidsrc", "cloudnestra", "vidplay", "filemoon", 
+        "vidcloud", "megacloud", "rabbitstream", "youtube"
+    )
+
     override fun shouldOverrideUrlLoading(
         view: WebView?,
         request: WebResourceRequest?
     ): Boolean {
         val url = request?.url ?: return true
         val scheme = url.scheme?.lowercase() ?: ""
+
         if (scheme in ESCAPE_SCHEMES) return true
         if (scheme == "data" || scheme == "blob") return false
+
+        // 🔥 THE POPUP KILLER 🔥
+        // If an HTTP/HTTPS URL tries to take over the main frame...
+        if ((scheme == "http" || scheme == "https") && request.isForMainFrame) {
+            val host = url.host?.lowercase() ?: ""
+            // ...and it's NOT one of our trusted player domains, silently execute it.
+            if (PLAYER_DOMAINS.none { host.contains(it) }) {
+                return true 
+            }
+        }
+
         if (isBlockedRootSite(url)) return true
         if (scheme == "http" || scheme == "https") return false
         return true
@@ -810,11 +833,22 @@ class SmartWebViewClient(
         if (url.startsWith("about:") || url.startsWith("data:") || url.startsWith("blob:")) return false
         val parsed = try { Uri.parse(url) } catch (e: Exception) { return true }
         val scheme = parsed.scheme?.lowercase() ?: return true
+
         if (scheme in ESCAPE_SCHEMES) return true
+
+        // 🔥 THE POPUP KILLER (Legacy Fallback) 🔥
+        if (scheme == "http" || scheme == "https") {
+            val host = parsed.host?.lowercase() ?: ""
+            if (PLAYER_DOMAINS.none { host.contains(it) }) {
+                return true 
+            }
+        }
+
         if (isBlockedRootSite(parsed)) return true
         if (scheme == "http" || scheme == "https") return false
         return true
     }
+
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
         super.onPageStarted(view, url, favicon)
@@ -934,16 +968,10 @@ class SmartChromeClient(
         onFullscreenEnter()
     }
 
-        // ── Kotlin-side: exit fullscreen ──────────────────────────────────────────
-    override fun onHideCustomView() {
-        // ADD THIS GUARD: Ignore ad-driven native exits!
-        if (!userRequestedExit) {
-            return
-        }
-
+        override fun onHideCustomView() {
+        // REMOVED THE GUARD - Let it clean up normally!
         val view = customView ?: return
 
-        // You MUST remove the view. When Chromium calls this...
         fullscreenContainer.removeView(view)
         fullscreenContainer.visibility = View.GONE
         
@@ -954,7 +982,8 @@ class SmartChromeClient(
         userRequestedExit = false
         
         onFullscreenExit()
-    }
+        }
+        
 
 
     fun isFullscreen(): Boolean = customView != null
