@@ -34,7 +34,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
-// â”€â”€â”€ Data Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Data Models ─────────────────────────────────────────────────────────────
 
 data class MediaItem(
     val id: Int,
@@ -167,7 +167,7 @@ data class TmdbDiscoverItem(
     val year get() = (releaseDate ?: firstAirDate)?.take(4) ?: ""
 }
 
-// â”€â”€â”€ Storage â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Storage ──────────────────────────────────────────────────────────────────
 
 class RecentStorage(context: Context) {
     private val prefs = context.getSharedPreferences("moviesfan_prefs", Context.MODE_PRIVATE)
@@ -193,7 +193,7 @@ class RecentStorage(context: Context) {
     }
 }
 
-// â”€â”€â”€ API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── API ──────────────────────────────────────────────────────────────────────
 
 class TmdbApi {
     private val client = OkHttpClient.Builder()
@@ -318,7 +318,7 @@ class TmdbApi {
     private fun enc(s: String) = java.net.URLEncoder.encode(s, "UTF-8")
 }
 
-// â”€â”€â”€ WebViewClient â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── WebViewClient ─────────────────────────────────────────────────────────────
 
 class SmartWebViewClient(
     private val onPageReady: () -> Unit,
@@ -332,20 +332,20 @@ class SmartWebViewClient(
 
     private val SPOOF_JS = """
         (function() {
-            // â”€â”€ Guard: run once per window, re-run on each inject â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Guard: run once per window, re-run on each inject ─────────────
             // We intentionally allow re-injection (no early-return guard) so that
             // iframes and dynamic pages always get the full patch applied.
 
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            // SECTION 1 â€” NAVIGATOR / FINGERPRINT SPOOFING
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+            // ═══════════════════════════════════════════════════════════════════
+            // SECTION 1 — NAVIGATOR / FINGERPRINT SPOOFING
+            // ═══════════════════════════════════════════════════════════════════
             try {
                 Object.defineProperty(navigator, 'webdriver', { get: function() { return false; } });
             } catch(e) {}
 
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            // SECTION 2 â€” VIEWPORT
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+            // ═══════════════════════════════════════════════════════════════════
+            // SECTION 2 — VIEWPORT
+            // ═══════════════════════════════════════════════════════════════════
             try {
                 var vp = document.querySelector('meta[name=viewport]');
                 var vc = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
@@ -357,18 +357,18 @@ class SmartWebViewClient(
                 }
             } catch(e) {}
 
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            // SECTION 2.5 â€” REMOVE NATIVE TAP HIGHLIGHT
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+            // ═══════════════════════════════════════════════════════════════════
+            // SECTION 2.5 — REMOVE NATIVE TAP HIGHLIGHT
+            // ═══════════════════════════════════════════════════════════════════
             try {
                 var style = document.createElement('style');
                 style.innerHTML = '* { -webkit-tap-highlight-color: transparent !important; }';
                 (document.head || document.documentElement).appendChild(style);
             } catch(e) {}
 
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            // SECTION 3 â€” TOTAL NATIVE POPUP & HIGHLIGHT KILLER
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+            // ═══════════════════════════════════════════════════════════════════
+            // SECTION 3 — TOTAL NATIVE POPUP & HIGHLIGHT KILLER
+            // ═══════════════════════════════════════════════════════════════════
             try {
                 // 1. Kill the blue tap highlight globally in the main document
                 var style = document.createElement('style');
@@ -404,17 +404,17 @@ class SmartWebViewClient(
                     }, { capture: true });
                 }
             } catch(e) {}
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            // SECTION 4 â€” IRON-LOCK exitFullscreen / webkitExitFullscreen
+            // ═══════════════════════════════════════════════════════════════════
+            // SECTION 4 — IRON-LOCK exitFullscreen / webkitExitFullscreen
             //
             // This is the PRIMARY fix for the black-screen issue.
             // Ads call document.exitFullscreen() or video.webkitExitFullscreen()
             // to pull the player out of fullscreen, leaving a black void.
             // We make ALL exitFullscreen calls completely silent no-ops.
             // The only real exit is via the user pressing Back (handled in Kotlin).
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+            // ═══════════════════════════════════════════════════════════════════
             try {
-                // â”€â”€ 4a. document-level exit (standard + webkit) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                // ── 4a. document-level exit (standard + webkit) ───────────────
                 var noop = function() { return Promise.resolve(); };
                 var noopVoid = function() {};
 
@@ -439,7 +439,7 @@ class SmartWebViewClient(
                     configurable: true
                 });
 
-                // â”€â”€ 4b. Element prototype (video, div, iframe etc.) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                // ── 4b. Element prototype (video, div, iframe etc.) ───────────
                 ['exitFullscreen','webkitExitFullscreen','mozCancelFullScreen','msExitFullscreen'].forEach(function(fn) {
                     try {
                         Object.defineProperty(HTMLElement.prototype, fn, {
@@ -450,7 +450,7 @@ class SmartWebViewClient(
                     } catch(e2) {}
                 });
 
-                // â”€â”€ 4c. Spoof fullscreen state so ads think they're NOT in FS â”€
+                // ── 4c. Spoof fullscreen state so ads think they're NOT in FS ─
                 // If ads check document.fullscreenElement before calling exit,
                 // returning null makes them think exit is unnecessary.
                 try {
@@ -464,7 +464,7 @@ class SmartWebViewClient(
                     });
                 } catch(e3) {}
 
-                // â”€â”€ 4d. Intercept fullscreenchange events from ads â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                // ── 4d. Intercept fullscreenchange events from ads ─────────────
                 // Some ad SDKs listen to fullscreenchange and react by calling
                 // exitFullscreen. We intercept and kill those events.
                 try {
@@ -488,10 +488,10 @@ class SmartWebViewClient(
 
             } catch(e) {}
 
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            // SECTION 5 â€” LOCK requestFullscreen (prevent ad iframes from
+            // ═══════════════════════════════════════════════════════════════════
+            // SECTION 5 — LOCK requestFullscreen (prevent ad iframes from
             //             grabbing fullscreen and then exiting it to go black)
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+            // ═══════════════════════════════════════════════════════════════════
             try {
                 if (!Element.prototype.__sz_fs_patched) {
                     Element.prototype.__sz_fs_patched = true;
@@ -534,13 +534,13 @@ class SmartWebViewClient(
                 }
             } catch(e) {}
 
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            // SECTION 6 â€” AD OVERLAY ELIMINATOR
+            // ═══════════════════════════════════════════════════════════════════
+            // SECTION 6 — AD OVERLAY ELIMINATOR
             //
             // Detects and nukes clickable overlay elements (the kind that open
             // ad tabs when you tap the video). Uses the same logic that works
-            // in normal mode â€” now also patched into iframes via Section 7.
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+            // in normal mode — now also patched into iframes via Section 7.
+            // ═══════════════════════════════════════════════════════════════════
             function isAdOverlay(el) {
                 try {
                     if (!el || !el.tagName) return false;
@@ -593,12 +593,12 @@ class SmartWebViewClient(
 
             function eliminateOverlay(el) {
                 try {
-                    // For anchor tags â€” remove entirely so no redirect possible
+                    // For anchor tags — remove entirely so no redirect possible
                     if (el.tagName && el.tagName.toUpperCase() === 'A') {
                         el.remove();
                         return;
                     }
-                    // For divs â€” make untouchable but keep them (removing may break layout)
+                    // For divs — make untouchable but keep them (removing may break layout)
                     el.style.setProperty('pointer-events', 'none', 'important');
                     el.style.setProperty('z-index', '-9999', 'important');
                     el.style.setProperty('opacity', '0', 'important');
@@ -630,7 +630,7 @@ class SmartWebViewClient(
                 scanAndEliminate(document);
             }
 
-            // â”€â”€ Mutation observer â€” catches dynamically injected ad overlays â”€â”€
+            // ── Mutation observer — catches dynamically injected ad overlays ──
             try {
                 if (!window.__sz_observer) {
                     window.__sz_observer = new MutationObserver(function(mutations) {
@@ -662,7 +662,7 @@ class SmartWebViewClient(
                 }
             } catch(e) {}
 
-            // â”€â”€ Touch/click capture â€” last-resort ad-tap blocker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // ── Touch/click capture — last-resort ad-tap blocker ─────────────
             try {
                 if (!window.__sz_touch_patched) {
                     window.__sz_touch_patched = true;
@@ -686,9 +686,9 @@ class SmartWebViewClient(
                 }
             } catch(e) {}
 
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            // SECTION 7 â€” INJECT INTO ALL IFRAMES
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+            // ═══════════════════════════════════════════════════════════════════
+            // SECTION 7 — INJECT INTO ALL IFRAMES
+            // ═══════════════════════════════════════════════════════════════════
             try {
                 function patchIframe(iframe) {
                     try {
@@ -732,12 +732,12 @@ class SmartWebViewClient(
                         try { Object.defineProperty(iw,  'webkitExitFullscreen',  { get: function(){ return nv; }, configurable: true }); } catch(e){}
                     } catch(e) {}
                 }
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            // SECTION 8 â€” LOCATION / HISTORY HIJACK PREVENTION
+            // ═══════════════════════════════════════════════════════════════════
+            // SECTION 8 — LOCATION / HISTORY HIJACK PREVENTION
             //
             // Some ads change window.location.href directly.
             // We block any navigation to non-player domains.
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+            // ═══════════════════════════════════════════════════════════════════
             try {
                 if (!window.__sz_location_patched) {
                     window.__sz_location_patched = true;
@@ -793,7 +793,7 @@ class SmartWebViewClient(
 
         // 🚨 STRICT WHITELIST: Only these domains are allowed to navigate
     private val ALLOWED_DOMAINS = listOf(
-        "vidsrcme.ru", "cloudorchestranova.com", "vidsrc.xyz", "vidsrc.net", "vidsrc.in", 
+        "vidsrcme.ru", "vidsrc.to", "vidsrc.xyz", "vidsrc.net", "vidsrc.in", 
         "vidsrc.pm", "vidsrc.rip", "cloudnestra", "vidplay", "filemoon", 
         "megacloud", "rabbitstream", "embed", "youtube"
     )
@@ -893,7 +893,7 @@ class SmartWebViewClient(
     override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?) = true
 }
 
-// â”€â”€â”€ SmartChromeClient â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── SmartChromeClient ────────────────────────────────────────────────────────
 //
 // Design principle: treat fullscreen EXACTLY like normal mode.
 //
@@ -906,11 +906,11 @@ class SmartWebViewClient(
 //   3. Result: black screen + normal mode restored
 //
 // Fix strategy:
-//   â€¢ NEVER actually hide the custom view unless the user explicitly pressed Back.
-//   â€¢ Track user intent via a dedicated flag set ONLY from the back-press handler.
-//   â€¢ Any onHideCustomView call that arrives WITHOUT that flag = ad-driven = ignore.
-//   â€¢ We don't even need the re-entry hack anymore â€” we just refuse to hide.
-//   â€¢ The JS layer (Section 4 of SPOOF_JS) kills exitFullscreen at the JS level
+//   • NEVER actually hide the custom view unless the user explicitly pressed Back.
+//   • Track user intent via a dedicated flag set ONLY from the back-press handler.
+//   • Any onHideCustomView call that arrives WITHOUT that flag = ad-driven = ignore.
+//   • We don't even need the re-entry hack anymore — we just refuse to hide.
+//   • The JS layer (Section 4 of SPOOF_JS) kills exitFullscreen at the JS level
 //     before it even reaches here; this Kotlin guard is the second line of defence.
 //
 class SmartChromeClient(
@@ -932,13 +932,13 @@ class SmartChromeClient(
         "cloudnestra.com", "vidplay.online", "filemoon.sx"
     )
 
-    // â”€â”€ Called by back-press / close button ONLY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Called by back-press / close button ONLY ──────────────────────────────
     fun requestUserExit() {
         userRequestedExit = true
         onHideCustomView()
     }
 
-    // â”€â”€ Kotlin-side: enter fullscreen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Kotlin-side: enter fullscreen ─────────────────────────────────────────
     override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
         if (view == null) return
 
@@ -963,7 +963,7 @@ class SmartChromeClient(
         onFullscreenEnter()
     }
 
-    // â”€â”€ Kotlin-side: exit fullscreen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Kotlin-side: exit fullscreen ──────────────────────────────────────────
     override fun onHideCustomView() {
     val view = customView ?: return
 
@@ -991,7 +991,7 @@ class SmartChromeClient(
         } else false
     }
 
-    // â”€â”€ Popup / new window: only let player domains through â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Popup / new window: only let player domains through ───────────────────
     override fun onCreateWindow(
     view: WebView?,
     isDialog: Boolean,
@@ -1011,7 +1011,7 @@ class SmartChromeClient(
     override fun onJsBeforeUnload(v: WebView?, u: String?, m: String?, r: JsResult?): Boolean { r?.cancel(); return true }
 }
 
-// â”€â”€â”€ Adapters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Adapters ─────────────────────────────────────────────────────────────────
 
 class MediaAdapter(
     private var items: List<MediaItem>,
@@ -1038,7 +1038,7 @@ class MediaAdapter(
         val item = items[pos]
         h.title.text = item.title
         h.detail.text = if (showRemove && item.type == "tv" && item.season > 0) {
-            "S${item.season} Â· E${item.episode}"
+            "S${item.season} · E${item.episode}"
         } else {
             item.detail
         }
@@ -1091,7 +1091,7 @@ class DiscoverAdapter(
     override fun onBindViewHolder(h: VH, pos: Int) {
         val item = items[pos]
         h.title.text = item.displayTitle
-        h.detail.text = item.year.ifEmpty { "â€”" }
+        h.detail.text = item.year.ifEmpty { "—" }
         val type = item.mediaType ?: mediaType
         h.typeBadge.text = if (type == "tv") "TV" else "MOVIE"
         h.typeBadge.setBackgroundColor(
@@ -1116,11 +1116,11 @@ class DiscoverAdapter(
     fun update(newItems: List<TmdbDiscoverItem>) { items = newItems; notifyDataSetChanged() }
 }
 
-// â”€â”€â”€ MainActivity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── MainActivity ─────────────────────────────────────────────────────────────
 
 class MainActivity : AppCompatActivity() {
 
-    // â”€â”€ Sections / Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Sections / Navigation ─────────────────────────────────────────────────
     private lateinit var homeSection: ScrollView
     private lateinit var moviesSection: LinearLayout
     private lateinit var seriesSection: LinearLayout
@@ -1128,7 +1128,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var searchSection: LinearLayout
     private lateinit var detailSection: ScrollView
 
-    // â”€â”€ Bottom Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Bottom Navigation ─────────────────────────────────────────────────────
     private lateinit var navHome: LinearLayout
     private lateinit var navDiscover: LinearLayout
     private lateinit var navMovies: LinearLayout
@@ -1142,11 +1142,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var navMoviesIcon: TextView
     private lateinit var navShowsIcon: TextView
 
-    // â”€â”€ Top Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Top Bar ───────────────────────────────────────────────────────────────
     private lateinit var searchInput: EditText
     private lateinit var searchBtn: ImageButton
 
-    // â”€â”€ Home screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Home screen ───────────────────────────────────────────────────────────
     private lateinit var continueWatchingRow: LinearLayout
     private lateinit var continueWatchingList: RecyclerView
     private lateinit var continueWatchingEmpty: TextView
@@ -1155,7 +1155,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var homeNetflixList: RecyclerView
     private lateinit var homePrimeList: RecyclerView
 
-    // â”€â”€ Movies section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Movies section ────────────────────────────────────────────────────────
     private lateinit var moviesRecycler: RecyclerView
     private lateinit var moviesLoading: ProgressBar
     private lateinit var moviesSortSpinner: Spinner
@@ -1166,7 +1166,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var moviesNextBtn: Button
     private lateinit var moviesPageIndicator: TextView
 
-    // â”€â”€ Series section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Series section ────────────────────────────────────────────────────────
     private lateinit var seriesRecycler: RecyclerView
     private lateinit var seriesLoading: ProgressBar
     private lateinit var seriesSortSpinner: Spinner
@@ -1177,7 +1177,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var seriesNextBtn: Button
     private lateinit var seriesPageIndicator: TextView
 
-    // â”€â”€ Discover section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Discover section ──────────────────────────────────────────────────────
     private lateinit var discoverRecycler: RecyclerView
     private lateinit var discoverLoading: ProgressBar
     private lateinit var discoverCategorySpinner: Spinner
@@ -1186,7 +1186,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var discoverNextBtn: Button
     private lateinit var discoverPageIndicator: TextView
 
-    // â”€â”€ Search section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Search section ────────────────────────────────────────────────────────
     private lateinit var searchLoading: ProgressBar
     private lateinit var searchRecycler: RecyclerView
     private lateinit var paginationRow: LinearLayout
@@ -1194,7 +1194,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var nextPageBtn: Button
     private lateinit var pageIndicator: TextView
 
-    // â”€â”€ Detail section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Detail section ────────────────────────────────────────────────────────
     private lateinit var detailLoading: ProgressBar
     private lateinit var detailContent: LinearLayout
     private lateinit var detailHero: FrameLayout
@@ -1220,7 +1220,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var detailMoreInfoSection: LinearLayout
     private lateinit var detailSeasons: TextView
 
-    // â”€â”€ Player â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Player ────────────────────────────────────────────────────────────────
     private lateinit var playerModal: LinearLayout
     private lateinit var videoContainer: FrameLayout
     private lateinit var fullscreenContainer: FrameLayout
@@ -1237,7 +1237,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var nextEpBtn: ImageButton
     private lateinit var chromeClient: SmartChromeClient
 
-    // â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── State ─────────────────────────────────────────────────────────────────
     private val api = TmdbApi()
     private lateinit var storage: RecentStorage
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -1315,7 +1315,7 @@ class MainActivity : AppCompatActivity() {
         showHome()
     }
 
-    // â”€â”€â”€ View Binding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── View Binding ─────────────────────────────────────────────────────────
 
     private fun bindViews() {
         // Navigation
@@ -1437,7 +1437,7 @@ class MainActivity : AppCompatActivity() {
         videoContainer.layoutParams = videoContainer.layoutParams.apply { height = videoHeight }
     }
 
-    // â”€â”€â”€ WebView Setup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── WebView Setup ────────────────────────────────────────────────────────
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
@@ -1492,8 +1492,8 @@ class MainActivity : AppCompatActivity() {
         s.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         s.allowFileAccess = false
         s.allowContentAccess = false
-        s.setSupportMultipleWindows(false)
-        s.javaScriptCanOpenWindowsAutomatically = false
+        s.setSupportMultipleWindows(false) // 🚨 This physically prevents popunders from existing
+        s.javaScriptCanOpenWindowsAutomatically = false // 🚨 Stops JS from hijacking the tab
         s.useWideViewPort = true
         s.loadWithOverviewMode = true
         s.setSupportZoom(false)
@@ -1512,7 +1512,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // â”€â”€â”€ Adapters Setup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── Adapters Setup ───────────────────────────────────────────────────────
 
     private fun setupAdapters() {
         // Continue watching
@@ -1571,7 +1571,7 @@ class MainActivity : AppCompatActivity() {
         detailRecommendationsList.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
     }
 
-    // â”€â”€â”€ Listeners â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── Listeners ────────────────────────────────────────────────────────────
 
     private fun setupListeners() {
         // Bottom nav
@@ -1638,12 +1638,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupFilterSpinners() {
         val sortOptions = listOf(
-            "Popularity â†“" to "popularity.desc",
-            "Popularity â†‘" to "popularity.asc",
-            "Rating â†“" to "vote_average.desc",
-            "Rating â†‘" to "vote_average.asc",
-            "Release â†“" to "release_date.desc",
-            "Release â†‘" to "release_date.asc",
+            "Popularity ↓" to "popularity.desc",
+            "Popularity ↑" to "popularity.asc",
+            "Rating ↓" to "vote_average.desc",
+            "Rating ↑" to "vote_average.asc",
+            "Release ↓" to "release_date.desc",
+            "Release ↑" to "release_date.asc",
             "Title A-Z" to "original_title.asc",
             "Title Z-A" to "original_title.desc"
         )
@@ -1748,7 +1748,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // â”€â”€â”€ Genre Loading â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── Genre Loading ────────────────────────────────────────────────────────
 
     private fun loadGenres() {
         scope.launch {
@@ -1811,7 +1811,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // â”€â”€â”€ Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── Navigation ──────────────────────────────────────────────────────────
 
     private fun navigateTo(section: String) {
         if (searchInput.text.toString().isNotEmpty()) searchInput.setText("")
@@ -1869,7 +1869,7 @@ class MainActivity : AppCompatActivity() {
         continueAdapter.update(items)
     }
 
-    // â”€â”€â”€ Home Content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── Home Content ─────────────────────────────────────────────────────────
 
     private fun loadHomeContent() {
         scope.launch {
@@ -1888,7 +1888,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // â”€â”€â”€ Movies Content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── Movies Content ───────────────────────────────────────────────────────
 
     private fun loadMovies() {
         moviesLoading.visibility = View.VISIBLE
@@ -1909,7 +1909,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // â”€â”€â”€ Series Content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── Series Content ───────────────────────────────────────────────────────
 
     private fun loadSeries() {
         seriesLoading.visibility = View.VISIBLE
@@ -1930,7 +1930,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // â”€â”€â”€ Discover Content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── Discover Content ─────────────────────────────────────────────────────
 
     private fun loadDiscover() {
         discoverLoading.visibility = View.VISIBLE
@@ -1966,7 +1966,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // â”€â”€â”€ Search â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── Search ──────────────────────────────────────────────────────────────
 
     private fun doSearch(query: String, page: Int = 1) {
         lastQuery = query; searchPage = page
@@ -2003,7 +2003,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // â”€â”€â”€ Detail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── Detail ──────────────────────────────────────────────────────────────
 
     private fun loadDetail(id: Int, type: String, season: Int = 1, episode: Int = 1) {
         currentId = id; currentType = type
@@ -2063,8 +2063,8 @@ class MainActivity : AppCompatActivity() {
 
                 detailTitle.text = movie.displayTitle
                 detailYear.text = movie.year
-                detailGenre.text = movie.genres?.take(3)?.joinToString(" Â· ") { it.name } ?: ""
-                detailRating.text = "â˜… ${"%.1f".format(movie.voteAverage ?: 0.0)} (${movie.voteCount ?: 0} votes)"
+                detailGenre.text = movie.genres?.take(3)?.joinToString(" · ") { it.name } ?: ""
+                detailRating.text = "★ ${"%.1f".format(movie.voteAverage ?: 0.0)} (${movie.voteCount ?: 0} votes)"
                 detailRuntime.text = movie.runtimeFormatted
                 detailBadgeType.text = "MOVIE"
                 detailBadgeType.setBackgroundColor(Color.parseColor("#c0392b"))
@@ -2072,8 +2072,8 @@ class MainActivity : AppCompatActivity() {
                 detailTagline.visibility = if (movie.tagline.isNullOrEmpty()) View.GONE else View.VISIBLE
                 detailOverview.text = movie.overview ?: "No overview available."
                 detailSeasons.visibility = View.GONE
-                detailStatus.text = "Status: ${movie.status ?: "â€”"}"
-                detailLanguage.text = "Language: ${movie.spokenLanguages?.firstOrNull()?.englishName ?: "â€”"}"
+                detailStatus.text = "Status: ${movie.status ?: "—"}"
+                detailLanguage.text = "Language: ${movie.spokenLanguages?.firstOrNull()?.englishName ?: "—"}"
                 detailMoreInfoSection.visibility = View.VISIBLE
 
                 playButton.setOnClickListener { openPlayer("movie") }
@@ -2139,20 +2139,20 @@ class MainActivity : AppCompatActivity() {
 
                 detailTitle.text = show.displayTitle
                 detailYear.text = show.year
-                detailGenre.text = show.genres?.take(3)?.joinToString(" Â· ") { it.name } ?: ""
-                detailRating.text = "â˜… ${"%.1f".format(show.voteAverage ?: 0.0)} (${show.voteCount ?: 0} votes)"
+                detailGenre.text = show.genres?.take(3)?.joinToString(" · ") { it.name } ?: ""
+                detailRating.text = "★ ${"%.1f".format(show.voteAverage ?: 0.0)} (${show.voteCount ?: 0} votes)"
                 detailRuntime.text = "${show.numberOfSeasons ?: 0} Season${if ((show.numberOfSeasons ?: 0) != 1) "s" else ""}"
                 detailBadgeType.text = "TV SERIES"
                 detailBadgeType.setBackgroundColor(Color.parseColor("#1a6fd4"))
                 detailTagline.text = show.tagline ?: ""
                 detailTagline.visibility = if (show.tagline.isNullOrEmpty()) View.GONE else View.VISIBLE
                 detailOverview.text = show.overview ?: "No overview available."
-                detailStatus.text = "Status: ${show.status ?: "â€”"}"
-                detailLanguage.text = "Language: ${show.spokenLanguages?.firstOrNull()?.englishName ?: "â€”"}"
+                detailStatus.text = "Status: ${show.status ?: "—"}"
+                detailLanguage.text = "Language: ${show.spokenLanguages?.firstOrNull()?.englishName ?: "—"}"
                 detailMoreInfoSection.visibility = View.VISIBLE
 
                 val seasonsText = seasonsMap.values.sortedBy { it.seasonNumber }
-                    .joinToString("  Â·  ") { "S${it.seasonNumber} (${it.episodeCount} eps)" }
+                    .joinToString("  ·  ") { "S${it.seasonNumber} (${it.episodeCount} eps)" }
                 detailSeasons.text = "Seasons: $seasonsText"
                 detailSeasons.visibility = View.VISIBLE
 
@@ -2186,7 +2186,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // â”€â”€â”€ Player â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── Player ──────────────────────────────────────────────────────────────
 
     private fun openPlayer(type: String) {
         playerModal.visibility = View.VISIBLE
@@ -2224,7 +2224,7 @@ class MainActivity : AppCompatActivity() {
         val seasonLabels = seasons.map {
             it.name?.takeIf { n -> n != "Season ${it.seasonNumber}" }
                 ?.let { n -> "$n (${it.episodeCount} eps)" }
-                ?: "Season ${it.seasonNumber}  Â·  ${it.episodeCount} eps"
+                ?: "Season ${it.seasonNumber}  ·  ${it.episodeCount} eps"
         }
         val sAdapter = ArrayAdapter(this, R.layout.spinner_item, seasonLabels)
         sAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item)
@@ -2262,12 +2262,12 @@ class MainActivity : AppCompatActivity() {
     private fun updateTvFrame() {
         playerLoadingOverlay.visibility = View.VISIBLE
         loadPlayerFrame("$EMBED_TV/$currentId/$currentSeason/$currentEpisode")
-        val epInfo = "S${currentSeason} Â· E${currentEpisode}"
+        val epInfo = "S${currentSeason} · E${currentEpisode}"
         playerEpisodeInfo.text = epInfo
         storage.add(MediaItem(currentId, "tv", detailTitle.text.toString(), epInfo, currentPosterUrl, currentSeason, currentEpisode))
     }
 
-    // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private fun hideKeyboard() {
         getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(searchInput.windowToken, 0)
@@ -2316,7 +2316,7 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
-// â”€â”€â”€ Cast Adapter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Cast Adapter ─────────────────────────────────────────────────────────────
 
 class CastAdapter(
     private val cast: List<TmdbCastMember>,
