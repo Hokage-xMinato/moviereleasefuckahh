@@ -5,6 +5,10 @@ plugins {
 }
 
 android {
+
+    def props = new Properties()
+    file("../local.properties").withInputStream { props.load(it) }
+    
     namespace 'com.smarterz.app'
     compileSdk 34
 
@@ -16,10 +20,21 @@ android {
         versionName "1.0"
     }
 
+    signingConfigs {
+        release {
+            storeFile file(props['STORE_FILE'])
+            storePassword props['STORE_PASSWORD']
+            keyAlias props['KEY_ALIAS']
+            keyPassword props['KEY_PASSWORD']
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled true
+            shrinkResources trueshrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
         debug {
             minifyEnabled false
